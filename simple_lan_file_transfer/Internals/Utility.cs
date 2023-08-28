@@ -5,5 +5,6 @@ internal static class Utility
     public const int BlockSizeKb = 8;
     public const int BlockSize = BlockSizeKb * 1024; 
     
-    public const int DefaultPort = 52123;
+    public const ushort DefaultPort = 52123;
+    public const ushort DefaultBroadcastPort = 52913;
 }
