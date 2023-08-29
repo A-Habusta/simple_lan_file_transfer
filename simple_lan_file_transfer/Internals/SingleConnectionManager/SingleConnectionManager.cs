@@ -4,151 +4,108 @@ namespace simple_lan_file_transfer.Internals;
 
 public class SingleConnectionManager
 {
-    private class RequestListener : NetworkLoopBase
-    {
-        private readonly Socket _socket;
-        
-        public RequestListener(Socket socket)
-        {
-            _socket = socket;
-        }
-        
-        protected override async void Loop(CancellationToken cancellationToken)
-        {
-            var buffer = new byte[Message.Size];
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var read = await _socket.ReceiveAsync(buffer, cancellationToken);
-                if (read != Message.Size)
-                {
-                    throw new IOException("Received invalid message size");
-                }
-                
-                var message = new Message
-                {
-                    Type = (MessageType) buffer[0],
-                    Data = BitConverter.ToUInt16(buffer.AsSpan(1))
-                };
-                
-                if (message.Type == MessageType.RequestTransfer)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    return;
-                }
-            }
-        }
-    }
-    
     private enum MessageType
     {
         RequestTransfer,
-        AcceptTransfer,
-        RejectTransfer
+        SendOpenedPort,
     }
 
     private struct Message
     {
         public const int Size = 3;
-        public MessageType Type { get; set; }
-        public ushort Data { get; set; }
+        public MessageType Type { get; init; }
+        public ushort Data { get; init; }
     }
-    
+
     private readonly Socket _socket;
-    private CancellationTokenSource? _acceptRequestsCancellationTokenSource;
-    
+    private readonly RequestListener _requestListener;
+
     private readonly List<SenderTransferManager> _outgoingTransfers = new();
     private readonly List<ReceiverTransferManager> _incomingTransfers = new();
-    
+
     public SingleConnectionManager(Socket socket)
     {
         _socket = socket;
+        _requestListener = new RequestListener(socket, HandleIncomingTransferRequestAsync, Message.Size);
         
-        StartWaitForTransferRequest();
+        _requestListener.Run();
     }
-    
-    public void CreateNewTransfer()
+
+    public async Task StartNewTransferAsync(CancellationToken cancellationToken = default)
     {
-        StopWaitForTransferRequest();
+        _requestListener.Stop();
         
-        SendMessage(new Message
+        await SendMessageAsync(new Message
         {
             Type = MessageType.RequestTransfer
-        });
-        
-        Message response = WaitForMessage();
-        
-        if (response.Type == MessageType.RejectTransfer)
-        {
-            throw new IOException("Transfer rejected");
-        }
-        
-        if (response.Type != MessageType.AcceptTransfer)
+        }, cancellationToken);
+
+        Message response = await ReceiveMessageAsync(cancellationToken);
+
+        if (response.Type != MessageType.SendOpenedPort)
         {
             throw new IOException("Received invalid message type");
         }
-        
-        
+
         IPAddress remoteIpAddress = ((IPEndPoint)_socket.RemoteEndPoint!).Address;
+
+        var remotePort = response.Data;
+
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+        await socket.ConnectAsync(remoteIpAddress, remotePort, cancellationToken);
+
+        _outgoingTransfers.Add(new SenderTransferManager(socket));
         
-        if (remoteIpAddress == null)
+        _requestListener.Run();
+    }
+
+    private async Task HandleIncomingTransferRequestAsync(byte[] incomingData, CancellationToken cancellationToken)
+    {
+        var messageType = (MessageType) incomingData[0];
+        if (messageType != MessageType.RequestTransfer)
         {
-            throw new IOException("Failed to get remote IP address");
+            throw new IOException("Received unexpected message type");
         }
         
-        var remotePort = response.Data;
-        
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-        socket.Connect(remoteIpAddress, remotePort);
+        socket.Bind(new IPEndPoint(IPAddress.Any, 0));
         
-        StartWaitForTransferRequest();
+        await SendMessageAsync(new Message
+        {
+            Type = MessageType.SendOpenedPort,
+            Data = (ushort) ((IPEndPoint) socket.LocalEndPoint!).Port
+        }, cancellationToken);
         
-        _outgoingTransfers.Add(new SenderTransferManager(socket));
+        await socket.AcceptAsync(cancellationToken);
+        
+        _incomingTransfers.Add(new ReceiverTransferManager(socket));
     }
 
     public void Stop()
     {
-        StopWaitForTransferRequest();
-
+        _requestListener.Stop();
+        
         StopAllIncomingTransfers();
         StopAllOutgoingTransfers();
         
         _socket.Dispose();
     }
     
-    private void StartWaitForTransferRequest()
-    {
-        _acceptRequestsCancellationTokenSource = new CancellationTokenSource();
-        Task.Run(() => WaitForTransferRequest(_acceptRequestsCancellationTokenSource.Token))
-            .ContinueWith(_ => AcceptRequestsCancellationTokenSourceDispose());
-    }
-    
     private void StopAllOutgoingTransfers() => _outgoingTransfers.ForEach(connection => connection.Stop());
     private void StopAllIncomingTransfers() => _incomingTransfers.ForEach(connection => connection.Stop());
     
-    private void StopWaitForTransferRequest()
-    {
-        _acceptRequestsCancellationTokenSource?.Cancel();
-    }
-    
-    private void AcceptRequestsCancellationTokenSourceDispose()
-    {
-        _acceptRequestsCancellationTokenSource?.Dispose();
-        _acceptRequestsCancellationTokenSource = null;
-    }  
-
-
-    private async void SendMessage(Message message)
+    private async Task SendMessageAsync(Message message, CancellationToken cancellationToken = default)
     {
         var buffer = new byte[Message.Size];
         buffer[0] = (byte) message.Type;
         BitConverter.TryWriteBytes(buffer.AsSpan(1), message.Data);
-        await _socket.SendAsync(buffer, CancellationToken.None);
+        await _socket.SendAsync(buffer, cancellationToken);
     }
 
-    private Message WaitForMessage()
+    private async Task<Message> ReceiveMessageAsync(CancellationToken cancellationToken = default)
     {
         var buffer = new byte[Message.Size];
-        var read = _socket.Receive(buffer);
+        var read = await _socket.ReceiveAsync(buffer, cancellationToken);
         if (read != Message.Size)
         {
             throw new IOException("Received invalid message size");
