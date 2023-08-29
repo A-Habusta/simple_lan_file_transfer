@@ -87,8 +87,8 @@ public class SingleConnectionManager
             .ContinueWith(_ => AcceptRequestsCancellationTokenSourceDispose());
     }
     
-    private void StopAllOutgoingTransfers() => _outgoingTransfers.ForEach(x => x.Stop());
-    private void StopAllIncomingTransfers() => _incomingTransfers.ForEach(x => x.Stop());
+    private void StopAllOutgoingTransfers() => _outgoingTransfers.ForEach(connection => connection.Stop());
+    private void StopAllIncomingTransfers() => _incomingTransfers.ForEach(connection => connection.Stop());
     
     private void StopWaitForTransferRequest()
     {
