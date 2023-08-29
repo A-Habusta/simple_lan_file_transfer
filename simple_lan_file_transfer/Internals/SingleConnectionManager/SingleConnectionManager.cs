@@ -15,6 +15,23 @@ public class SingleConnectionManager
         public const int Size = 3;
         public MessageType Type { get; init; }
         public ushort Data { get; init; }
+        
+        public byte[] ToBytes()
+        {
+            var bytes = new byte[Size];
+            bytes[0] = (byte)Type;
+            BitConverter.TryWriteBytes(bytes.AsSpan(1, 2), Data);
+            return bytes;
+        }
+        
+        public static Message FromBytes(byte[] bytes)
+        {
+            return new Message
+            {
+                Type = (MessageType)bytes[0],
+                Data = BitConverter.ToUInt16(bytes.AsSpan(1, 2))
+            };
+        }
     }
 
     private readonly Socket _socket;
@@ -61,8 +78,8 @@ public class SingleConnectionManager
 
     private async Task HandleIncomingTransferRequestAsync(byte[] incomingData, CancellationToken cancellationToken)
     {
-        var messageType = (MessageType) incomingData[0];
-        if (messageType != MessageType.RequestTransfer)
+        Message message = Message.FromBytes(incomingData);
+        if (message.Type != MessageType.RequestTransfer)
         {
             throw new IOException("Received unexpected message type");
         }
@@ -96,10 +113,7 @@ public class SingleConnectionManager
     
     private async Task SendMessageAsync(Message message, CancellationToken cancellationToken = default)
     {
-        var buffer = new byte[Message.Size];
-        buffer[0] = (byte) message.Type;
-        BitConverter.TryWriteBytes(buffer.AsSpan(1), message.Data);
-        await _socket.SendAsync(buffer, cancellationToken);
+        await _socket.SendAsync(message.ToBytes(), cancellationToken);
     }
 
     private async Task<Message> ReceiveMessageAsync(CancellationToken cancellationToken = default)
@@ -110,12 +124,8 @@ public class SingleConnectionManager
         {
             throw new IOException("Received invalid message size");
         }
-        
-        return new Message
-        {
-            Type = (MessageType) buffer[0],
-            Data = BitConverter.ToUInt16(buffer.AsSpan(1))
-        };
+
+        return Message.FromBytes(buffer);
     }
 }
 
