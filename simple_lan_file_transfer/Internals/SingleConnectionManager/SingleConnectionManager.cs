@@ -4,6 +4,41 @@ namespace simple_lan_file_transfer.Internals;
 
 public class SingleConnectionManager
 {
+    private class RequestListener : NetworkLoopBase
+    {
+        private readonly Socket _socket;
+        
+        public RequestListener(Socket socket)
+        {
+            _socket = socket;
+        }
+        
+        protected override async void Loop(CancellationToken cancellationToken)
+        {
+            var buffer = new byte[Message.Size];
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var read = await _socket.ReceiveAsync(buffer, cancellationToken);
+                if (read != Message.Size)
+                {
+                    throw new IOException("Received invalid message size");
+                }
+                
+                var message = new Message
+                {
+                    Type = (MessageType) buffer[0],
+                    Data = BitConverter.ToUInt16(buffer.AsSpan(1))
+                };
+                
+                if (message.Type == MessageType.RequestTransfer)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return;
+                }
+            }
+        }
+    }
+    
     private enum MessageType
     {
         RequestTransfer,
@@ -101,46 +136,13 @@ public class SingleConnectionManager
         _acceptRequestsCancellationTokenSource = null;
     }  
 
-    private async void WaitForTransferRequest(CancellationToken cancellationToken)
-    {
-        var buffer = new byte[Message.Size];
-        while (true)
-        {
-            var read = await _socket.ReceiveAsync(buffer, cancellationToken);
 
-            if (cancellationToken.IsCancellationRequested) return;
-            
-            if (read == Message.Size && buffer[0] == (byte) MessageType.RequestTransfer)
-            {
-                AcceptTransferRequestAsync(cancellationToken);
-            }
-        }
-    }
-
-    private async void AcceptTransferRequestAsync(CancellationToken cancellationToken)
-    {
-        TcpListener tcpListener = new(IPAddress.Any, 0);
-        tcpListener.Start();
-        var localPort = (ushort) ((IPEndPoint) tcpListener.LocalEndpoint).Port;
-        
-        SendMessage(new Message
-        {
-            Type = MessageType.AcceptTransfer,
-            Data = localPort
-        });
-        
-        Socket socket = await tcpListener.AcceptSocketAsync(cancellationToken);
-        tcpListener.Stop();
-        
-        _incomingTransfers.Add(new ReceiverTransferManager(socket));
-    }
-
-    private void SendMessage(Message message)
+    private async void SendMessage(Message message)
     {
         var buffer = new byte[Message.Size];
         buffer[0] = (byte) message.Type;
         BitConverter.TryWriteBytes(buffer.AsSpan(1), message.Data);
-        _socket.Send(buffer);
+        await _socket.SendAsync(buffer, CancellationToken.None);
     }
 
     private Message WaitForMessage()
