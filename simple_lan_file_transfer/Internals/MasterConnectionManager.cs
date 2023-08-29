@@ -45,7 +45,7 @@ public class MasterConnectionManager
         _connections.Add(new SingleConnectionManager(socket));
     }
     
-    public void StartBroadcastingIPAddress()
+    public void StartBroadcastingIpAddress()
     {
         _broadcastIpAddressCancellationTokenSource = new CancellationTokenSource();
         Task.Run(() => BroadcastIpAddress(_broadcastIpAddressCancellationTokenSource.Token))
