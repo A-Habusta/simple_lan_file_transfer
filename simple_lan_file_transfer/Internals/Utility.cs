@@ -8,5 +8,5 @@ internal static class Utility
     public const ushort DefaultPort = 52123;
     public const ushort DefaultBroadcastPort = 52913;
     
-    public const int BroadcastIntervalMs = 1000;
+    public const int BroadcastIntervalMs = 2000;
 }

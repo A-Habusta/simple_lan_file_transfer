@@ -18,11 +18,11 @@ public class SingleConnectionManager
         public ushort Data { get; set; }
     }
     
-    private Socket _socket;
+    private readonly Socket _socket;
     private CancellationTokenSource? _acceptRequestsCancellationTokenSource;
     
-    private List<SenderTransferManager> _outgoingTransfers = new();
-    private List<ReceiverTransferManager> _incomingTransfers = new();
+    private readonly List<SenderTransferManager> _outgoingTransfers = new();
+    private readonly List<ReceiverTransferManager> _incomingTransfers = new();
     
     public SingleConnectionManager(Socket socket)
     {

@@ -2,7 +2,7 @@ namespace simple_lan_file_transfer.Internals;
 
 public class SenderTransferManager
 {
-   private Socket _socket;
+   private readonly Socket _socket;
    public SenderTransferManager(Socket socket)
    {
       _socket = socket;
@@ -16,7 +16,7 @@ public class SenderTransferManager
 
 public class ReceiverTransferManager
 {
-   private Socket _socket;
+   private readonly Socket _socket;
    public ReceiverTransferManager(Socket socket)
    {
       _socket = socket;
@@ -25,5 +25,19 @@ public class ReceiverTransferManager
    public void Stop()
    {
       _socket.Dispose();
+   }
+}
+
+public abstract class TransferManagerBase
+{
+   protected readonly Socket Socket;
+   public TransferManagerBase(Socket socket)
+   {
+      Socket = socket;
+   }
+   
+   public void Stop()
+   {
+      Socket.Dispose();
    }
 }
