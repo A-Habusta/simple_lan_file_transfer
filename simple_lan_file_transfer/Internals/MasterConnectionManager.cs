@@ -5,9 +5,12 @@ public class MasterConnectionManager
     private readonly TcpListener _listener;
     private List<SingleConnectionManager> _connections = new();
     
-    private CancellationTokenRegistration _broadcastIpAddressCancellationTokenRegistration = new();
-    private CancellationTokenRegistration _readIpAddressBroadcastCancellationTokenRegistration = new();
+    private CancellationTokenSource? _broadcastIpAddressCancellationTokenSource;
+    private CancellationTokenSource? _readIpAddressBroadcastCancellationTokenSource;
     private UdpClient _broadcastClient;
+    private UdpClient _broadcastListener;
+    
+    private List<IPAddress> _availableIpAddresses = new();
     
     public MasterConnectionManager()
     {
@@ -16,15 +19,16 @@ public class MasterConnectionManager
 
         _broadcastClient = new UdpClient();
         _broadcastClient.EnableBroadcast = true;
-        _broadcastClient.Client.Bind(new IPEndPoint(IPAddress.Any, Utility.DefaultBroadcastPort));
+        _broadcastClient.Connect(IPAddress.Broadcast, Utility.DefaultBroadcastPort);
         
-        Task.Run(AcceptLoop);
+        _broadcastListener = new UdpClient(Utility.DefaultBroadcastPort);
+        
+        Task.Run(AcceptConnectionLoop);
     }
 
     public void Stop()
     {
-        _broadcastIpAddressCancellationTokenRegistration.Dispose();
-        _readIpAddressBroadcastCancellationTokenRegistration.Dispose(); 
+        StopBroadcastingIpAddress();
         
         _listener.Stop();
         foreach (SingleConnectionManager connection in _connections)
@@ -43,20 +47,35 @@ public class MasterConnectionManager
     
     public void StartBroadcastingIPAddress()
     {
-        Task.Run(() => BroadcastIpAddress(_broadcastIpAddressCancellationTokenRegistration.Token));
+        _broadcastIpAddressCancellationTokenSource = new CancellationTokenSource();
+        Task.Run(() => BroadcastIpAddress(_broadcastIpAddressCancellationTokenSource.Token))
+            .ContinueWith(_ => BroadcastIpAddressCancellationTokenSourceDispose());
     }
-
+    
+    public void StopBroadcastingIpAddress()
+    {
+        _broadcastIpAddressCancellationTokenSource?.Cancel();
+    }
+    
+    private void BroadcastIpAddressCancellationTokenSourceDispose()
+    {
+        _broadcastIpAddressCancellationTokenSource?.Dispose();
+        _broadcastIpAddressCancellationTokenSource = null;
+    }
+    
     private async void BroadcastIpAddress(CancellationToken cancellationToken)
     {
         IPAddress localIpAddress = ((IPEndPoint) _listener.LocalEndpoint).Address;
         var ipAddressBytes = localIpAddress.MapToIPv4().GetAddressBytes();
         
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
+            await _broadcastClient.SendAsync(ipAddressBytes, cancellationToken);
+            await Task.Delay(Utility.BroadcastIntervalMs, cancellationToken);
         }
     }
     
-    private async void AcceptLoop()
+    private async void AcceptConnectionLoop()
     {
         while (true)
         {

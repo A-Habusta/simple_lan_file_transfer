@@ -19,7 +19,7 @@ public class SingleConnectionManager
     }
     
     private Socket _socket;
-    private CancellationTokenSource _acceptRequestsCancellationTokenSource;
+    private CancellationTokenSource? _acceptRequestsCancellationTokenSource;
     
     private List<SenderTransferManager> _outgoingTransfers = new();
     private List<ReceiverTransferManager> _incomingTransfers = new();
@@ -27,15 +27,13 @@ public class SingleConnectionManager
     public SingleConnectionManager(Socket socket)
     {
         _socket = socket;
-        _acceptRequestsCancellationTokenSource = new CancellationTokenSource();
         
-        Task.Run(() => WaitForTransferRequest(_acceptRequestsCancellationTokenSource.Token));
+        StartWaitForTransferRequest();
     }
     
     public void CreateNewTransfer()
     {
-        // Stop accepting requests
-        _acceptRequestsCancellationTokenSource.Cancel();
+        StopWaitForTransferRequest();
         
         SendMessage(new Message
         {
@@ -55,7 +53,7 @@ public class SingleConnectionManager
         }
         
         
-        IPAddress remoteIpAddress = ((IPEndPoint)_socket.RemoteEndPoint).Address;
+        IPAddress remoteIpAddress = ((IPEndPoint)_socket.RemoteEndPoint!).Address;
         
         if (remoteIpAddress == null)
         {
@@ -64,20 +62,17 @@ public class SingleConnectionManager
         
         var remotePort = response.Data;
         
-        // Start accepting requests again
-        _acceptRequestsCancellationTokenSource.TryReset();
-        Task.Run(() => WaitForTransferRequest(_acceptRequestsCancellationTokenSource.Token));
-        
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
         socket.Connect(remoteIpAddress, remotePort);
+        
+        StartWaitForTransferRequest();
         
         _outgoingTransfers.Add(new SenderTransferManager(socket));
     }
 
     public void Stop()
     {
-        _acceptRequestsCancellationTokenSource.Cancel();
-        _acceptRequestsCancellationTokenSource.Dispose();
+        StopWaitForTransferRequest();
 
         StopAllIncomingTransfers();
         StopAllOutgoingTransfers();
@@ -85,21 +80,26 @@ public class SingleConnectionManager
         _socket.Dispose();
     }
     
-    private void StopAllOutgoingTransfers()
+    private void StartWaitForTransferRequest()
     {
-        foreach (SenderTransferManager transfer in _outgoingTransfers)
-        {
-            transfer.Stop();
-        }
+        _acceptRequestsCancellationTokenSource = new CancellationTokenSource();
+        Task.Run(() => WaitForTransferRequest(_acceptRequestsCancellationTokenSource.Token))
+            .ContinueWith(_ => AcceptRequestsCancellationTokenSourceDispose());
     }
     
-    private void StopAllIncomingTransfers()
+    private void StopAllOutgoingTransfers() => _outgoingTransfers.ForEach(x => x.Stop());
+    private void StopAllIncomingTransfers() => _incomingTransfers.ForEach(x => x.Stop());
+    
+    private void StopWaitForTransferRequest()
     {
-        foreach (ReceiverTransferManager transfer in _incomingTransfers)
-        {
-            transfer.Stop();
-        }
+        _acceptRequestsCancellationTokenSource?.Cancel();
     }
+    
+    private void AcceptRequestsCancellationTokenSourceDispose()
+    {
+        _acceptRequestsCancellationTokenSource?.Dispose();
+        _acceptRequestsCancellationTokenSource = null;
+    }  
 
     private async void WaitForTransferRequest(CancellationToken cancellationToken)
     {
@@ -107,17 +107,17 @@ public class SingleConnectionManager
         while (true)
         {
             var read = await _socket.ReceiveAsync(buffer, cancellationToken);
-            
+
             if (cancellationToken.IsCancellationRequested) return;
             
             if (read == Message.Size && buffer[0] == (byte) MessageType.RequestTransfer)
             {
-                AcceptTransferRequestAsync();
+                AcceptTransferRequestAsync(cancellationToken);
             }
         }
     }
 
-    private async void AcceptTransferRequestAsync()
+    private async void AcceptTransferRequestAsync(CancellationToken cancellationToken)
     {
         TcpListener tcpListener = new(IPAddress.Any, 0);
         tcpListener.Start();
@@ -129,7 +129,7 @@ public class SingleConnectionManager
             Data = localPort
         });
         
-        Socket socket = await tcpListener.AcceptSocketAsync(CancellationToken.None);
+        Socket socket = await tcpListener.AcceptSocketAsync(cancellationToken);
         tcpListener.Stop();
         
         _incomingTransfers.Add(new ReceiverTransferManager(socket));
