@@ -74,6 +74,33 @@ public class SingleConnectionManager
         _outgoingTransfers.Add(new SenderTransferManager(socket));
     }
 
+    public void Stop()
+    {
+        _acceptRequestsCancellationTokenSource.Cancel();
+        _acceptRequestsCancellationTokenSource.Dispose();
+
+        StopAllIncomingTransfers();
+        StopAllOutgoingTransfers();
+        
+        _socket.Dispose();
+    }
+    
+    private void StopAllOutgoingTransfers()
+    {
+        foreach (SenderTransferManager transfer in _outgoingTransfers)
+        {
+            transfer.Stop();
+        }
+    }
+    
+    private void StopAllIncomingTransfers()
+    {
+        foreach (ReceiverTransferManager transfer in _incomingTransfers)
+        {
+            transfer.Stop();
+        }
+    }
+
     private async void WaitForTransferRequest(CancellationToken cancellationToken)
     {
         var buffer = new byte[Message.Size];

@@ -6,7 +6,12 @@ public class SenderTransferManager
    public SenderTransferManager(Socket socket)
    {
       _socket = socket;
-   } 
+   }
+
+   public void Stop()
+   {
+      _socket.Dispose();
+   }
 }
 
 public class ReceiverTransferManager
@@ -16,4 +21,9 @@ public class ReceiverTransferManager
    {
       _socket = socket;
    } 
+   
+   public void Stop()
+   {
+      _socket.Dispose();
+   }
 }

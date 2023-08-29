@@ -7,4 +7,6 @@ internal static class Utility
     
     public const ushort DefaultPort = 52123;
     public const ushort DefaultBroadcastPort = 52913;
+
+    public const string BroadcastHostname = "255.255.255.255";
 }
