@@ -2,12 +2,37 @@ namespace simple_lan_file_transfer.Internals;
 
 public class SenderTransferManager : TransferManagerBase
 {
-   public SenderTransferManager(Socket socket) : base(socket) {}
+   private string _fileName;
+
+   public SenderTransferManager(Socket socket, string rootDirectory, string fileName) : base(socket, rootDirectory)
+   {
+      _fileName = fileName;
+   }
+
+   protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
+   {
+      
+   }
+   
+   protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
+   {
+      
+   }
 }
 
 public class ReceiverTransferManager : TransferManagerBase
 {
-   public ReceiverTransferManager(Socket socket) : base(socket) {}
+   public ReceiverTransferManager(Socket socket, string rootDirectory) : base(socket, rootDirectory) {}
+   
+   protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
+   {
+      
+   }
+   
+   protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
+   {
+      
+   }
 }
 
 public abstract class TransferManagerBase
@@ -44,15 +69,81 @@ public abstract class TransferManagerBase
          };
       }
    }
+   
+   protected struct FullMessage
+   {
+      public Header Header { get; init; }
+      public byte[] Data { get; init; }
+   }
       
+   protected readonly CancellationTokenSource TransferCancellationTokenSource = new();
    protected readonly Socket Socket;
-   public TransferManagerBase(Socket socket)
+   
+   // This is just the directory the file will be saved to, not the actual file path
+   protected readonly string FileLocation;
+   
+   public TransferManagerBase(Socket socket, string fileLocation)
    {
       Socket = socket;
+      FileLocation = fileLocation;
+
+      Task.Run(async () => await RunAsync(TransferCancellationTokenSource.Token))
+         .ContinueWith(_ => TransferCancellationTokenSource.Dispose());
    }
-   
+
    public void Stop()
    {
+      TransferCancellationTokenSource.Cancel();
       Socket.Dispose();
+   }
+   
+   protected async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
+   {
+      await Socket.SendAsync(header.ToBytes(), SocketFlags.None, cancellationToken);
+   }
+   
+   protected async Task<Header> ReceiveHeaderAsync(CancellationToken cancellationToken = default)
+   {
+      var buffer = new byte[Header.Size];
+      await Socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
+      return cancellationToken.IsCancellationRequested ? default : Header.FromBytes(buffer);
+   }
+   
+   protected async Task SendDataAsync(byte[] data, CancellationToken cancellationToken = default)
+   {
+      await Socket.SendAsync(data, SocketFlags.None, cancellationToken);
+   }
+   
+   protected async Task<byte[]> ReceiveDataAsync(ulong dataSize, CancellationToken cancellationToken = default)
+   {
+      var buffer = new byte[dataSize];
+      await Socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
+      return cancellationToken.IsCancellationRequested ? Array.Empty<byte>() : buffer;
+   }
+   
+   protected async Task<FullMessage> ReceiveFullMessageAsync(CancellationToken cancellationToken = default)
+   {
+      Header header = await ReceiveHeaderAsync(cancellationToken);
+      var data = await ReceiveDataAsync(header.DataSize, cancellationToken);
+      return cancellationToken.IsCancellationRequested ? default : new FullMessage
+      {
+         Header = header,
+         Data = data
+      };
+   }
+   
+   protected async Task SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
+   {
+      await SendHeaderAsync(message.Header, cancellationToken);
+      await SendDataAsync(message.Data, cancellationToken);
+   }
+   
+   protected abstract Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default);
+   protected abstract Task HandleFileTransferAsync(CancellationToken cancellationToken = default);
+
+   private async Task RunAsync(CancellationToken cancellationToken)
+   {
+      await CommunicateTransferParametersAsync(cancellationToken);
+      await HandleFileTransferAsync(cancellationToken);
    }
 }

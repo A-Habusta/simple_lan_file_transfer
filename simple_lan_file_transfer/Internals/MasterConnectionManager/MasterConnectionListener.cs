@@ -6,12 +6,23 @@ public class MasterConnectionListener : NetworkLoopBase
     public List <SingleConnectionManager> Connections { get; } = new();
 
 
-    protected override async void Loop(CancellationToken cancellationToken)
+    protected override async Task LoopAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             Socket socket = await _listener.AcceptSocketAsync(cancellationToken);
-            Connections.Add(new SingleConnectionManager(socket));
+            if (cancellationToken.IsCancellationRequested) return;
+            
+            lock (Connections)
+            {
+                var connectionManager = new SingleConnectionManager(socket);
+                Connections.Add(connectionManager);
+                
+                if (cancellationToken.IsCancellationRequested) break;
+
+                connectionManager.Stop();
+                Connections.Remove(connectionManager);
+            }
         }
     }
 }

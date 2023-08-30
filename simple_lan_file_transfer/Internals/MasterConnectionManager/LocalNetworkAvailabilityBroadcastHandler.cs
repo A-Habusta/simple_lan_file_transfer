@@ -10,7 +10,7 @@ public class LocalNetworkAvailabilityBroadcastHandler
             PopulateBroadcastedAddressesPerInterface();
         }
 
-        protected override async void Loop(CancellationToken cancellationToken)
+        protected override async Task LoopAsync(CancellationToken cancellationToken)
         {
             var tasks = new List<Task>();
             while (!cancellationToken.IsCancellationRequested)
@@ -22,6 +22,7 @@ public class LocalNetworkAvailabilityBroadcastHandler
                 }
                 
                 await Task.WhenAll(tasks);
+                if (cancellationToken.IsCancellationRequested) return;
                 await Task.Delay(Utility.BroadcastIntervalMs, cancellationToken);
             }
         }
@@ -73,12 +74,14 @@ public class LocalNetworkAvailabilityBroadcastHandler
         private readonly UdpClient _broadcastListener = new(Utility.DefaultBroadcastPort);
         public List<IPAddress> AvailableIpAddresses { get; } = new();
 
-        protected override async void Loop(CancellationToken cancellationToken)
+        protected override async Task LoopAsync(CancellationToken cancellationToken)
         {
             AvailableIpAddresses.Clear();
             while (!cancellationToken.IsCancellationRequested)
             {
                 UdpReceiveResult result = await _broadcastListener.ReceiveAsync(cancellationToken);
+                if (cancellationToken.IsCancellationRequested) return;
+                
                 var ipAddress = new IPAddress(result.Buffer);
                 AvailableIpAddresses.Add(ipAddress);
             }

@@ -17,7 +17,7 @@ public class RequestListener : NetworkLoopBase
         _requestReceivedHandler = requestReceivedHandler;
     }
 
-    protected override async void Loop(CancellationToken cancellationToken)
+    protected override async Task LoopAsync(CancellationToken cancellationToken)
     {
         var buffer = new byte[_requestSize];
         while (!cancellationToken.IsCancellationRequested)

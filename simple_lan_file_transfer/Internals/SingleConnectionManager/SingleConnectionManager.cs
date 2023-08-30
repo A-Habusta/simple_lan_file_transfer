@@ -36,9 +36,11 @@ public class SingleConnectionManager
 
     private readonly Socket _socket;
     private readonly RequestListener _requestListener;
-
+    
     private readonly List<SenderTransferManager> _outgoingTransfers = new();
     private readonly List<ReceiverTransferManager> _incomingTransfers = new();
+    
+    public string RootDirectory { get; set; } = string.Empty;
 
     public SingleConnectionManager(Socket socket)
     {
@@ -48,7 +50,7 @@ public class SingleConnectionManager
         _requestListener.Run();
     }
 
-    public async Task StartNewTransferAsync(CancellationToken cancellationToken = default)
+    public async Task StartNewTransferAsync(string fileName, CancellationToken cancellationToken = default)
     {
         _requestListener.Stop();
         
@@ -59,6 +61,12 @@ public class SingleConnectionManager
 
         Message response = await ReceiveMessageAsync(cancellationToken);
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            _requestListener.Run();
+            return;
+        }
+        
         if (response.Type != MessageType.SendOpenedPort)
         {
             throw new IOException("Received invalid message type");
@@ -70,14 +78,35 @@ public class SingleConnectionManager
 
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
         await socket.ConnectAsync(remoteIpAddress, remotePort, cancellationToken);
+        
+        if (cancellationToken.IsCancellationRequested)
+        {
+            socket.Dispose();
+            _requestListener.Run();
+            return;
+        }
 
-        _outgoingTransfers.Add(new SenderTransferManager(socket));
+        lock (_outgoingTransfers)
+        {
+            var transfer = new SenderTransferManager(socket, RootDirectory, fileName);
+            _outgoingTransfers.Add(transfer);
+            
+            // This is here to prevent a rare situation where the transfer manager is added to the list while the Stop
+            // method is waiting for this lock, which would cause the transfer manager to never be stopped
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _outgoingTransfers.Remove(transfer);
+                transfer.Stop();
+            }
+        }
         
         _requestListener.Run();
     }
 
     private async Task HandleIncomingTransferRequestAsync(byte[] incomingData, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested) return;
+         
         Message message = Message.FromBytes(incomingData);
         if (message.Type != MessageType.RequestTransfer)
         {
@@ -94,8 +123,23 @@ public class SingleConnectionManager
         }, cancellationToken);
         
         await socket.AcceptAsync(cancellationToken);
-        
-        _incomingTransfers.Add(new ReceiverTransferManager(socket));
+        if (cancellationToken.IsCancellationRequested)
+        {
+            socket.Dispose();
+            return;
+        }
+
+        lock (_incomingTransfers)
+        {
+            var transfer = new ReceiverTransferManager(socket, RootDirectory);
+            _incomingTransfers.Add(transfer);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _incomingTransfers.Remove(transfer);
+                transfer.Stop();
+            }
+        }
     }
 
     public void Stop()
@@ -107,9 +151,16 @@ public class SingleConnectionManager
         
         _socket.Dispose();
     }
-    
-    private void StopAllOutgoingTransfers() => _outgoingTransfers.ForEach(connection => connection.Stop());
-    private void StopAllIncomingTransfers() => _incomingTransfers.ForEach(connection => connection.Stop());
+
+    private void StopAllOutgoingTransfers()
+    {
+        lock (_outgoingTransfers) _outgoingTransfers.ForEach(connection => connection.Stop());  
+    }
+
+    private void StopAllIncomingTransfers()
+    {
+        lock (_incomingTransfers) _incomingTransfers.ForEach(connection => connection.Stop());
+    }
     
     private async Task SendMessageAsync(Message message, CancellationToken cancellationToken = default)
     {
@@ -120,6 +171,9 @@ public class SingleConnectionManager
     {
         var buffer = new byte[Message.Size];
         var read = await _socket.ReceiveAsync(buffer, cancellationToken);
+        
+        if (cancellationToken.IsCancellationRequested) return default;
+        
         if (read != Message.Size)
         {
             throw new IOException("Received invalid message size");
