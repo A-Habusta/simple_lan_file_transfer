@@ -1,13 +1,21 @@
 namespace simple_lan_file_transfer.Internals;
 
-public class SenderTransferManager : TransferManagerBase
+public class SenderTransferManager : TransferManagerBase, ISelfDeletingObject<SenderTransferManager>
 {
    private string _fileName;
 
-   public SenderTransferManager(Socket socket, string rootDirectory, string fileName) : base(socket, rootDirectory)
+   public SenderTransferManager(
+      Socket socket,
+      string rootDirectory,
+      ISelfDeletingObjectParent<SenderTransferManager> parent,
+      string fileName)
+      : base(socket, rootDirectory)
    {
       _fileName = fileName;
+      Parent = parent;
    }
+   
+   public ISelfDeletingObjectParent<SenderTransferManager> Parent { get; }
 
    protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
@@ -17,12 +25,27 @@ public class SenderTransferManager : TransferManagerBase
    protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
    {
       
+   }
+   
+   public void CloseConnectionAndDelete()
+   {
+      CloseConnection();
+      (this as ISelfDeletingObject<SenderTransferManager>).RemoveSelfFromParent();
    }
 }
 
-public class ReceiverTransferManager : TransferManagerBase
+public class ReceiverTransferManager : TransferManagerBase, ISelfDeletingObject<ReceiverTransferManager>
 {
-   public ReceiverTransferManager(Socket socket, string rootDirectory) : base(socket, rootDirectory) {}
+   public ReceiverTransferManager(
+      Socket socket,
+      string rootDirectory,
+      ISelfDeletingObjectParent<ReceiverTransferManager> parent)
+      : base(socket, rootDirectory)
+   {
+      Parent = parent;
+   }
+   
+   public ISelfDeletingObjectParent<ReceiverTransferManager> Parent { get; }
    
    protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
@@ -32,6 +55,12 @@ public class ReceiverTransferManager : TransferManagerBase
    protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
    {
       
+   }
+   
+   public void CloseConnectionAndDelete()
+   {
+      CloseConnection();
+      (this as ISelfDeletingObject<ReceiverTransferManager>).RemoveSelfFromParent();
    }
 }
 
@@ -91,12 +120,12 @@ public abstract class TransferManagerBase
          .ContinueWith(_ => TransferCancellationTokenSource.Dispose());
    }
 
-   public void Stop()
+   public void CloseConnection()
    {
       TransferCancellationTokenSource.Cancel();
       Socket.Dispose();
    }
-   
+
    protected async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
    {
       await Socket.SendAsync(header.ToBytes(), SocketFlags.None, cancellationToken);

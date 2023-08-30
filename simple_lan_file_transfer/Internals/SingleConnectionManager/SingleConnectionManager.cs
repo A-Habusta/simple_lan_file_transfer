@@ -2,7 +2,10 @@ using System.IO;
 
 namespace simple_lan_file_transfer.Internals;
 
-public class SingleConnectionManager
+public class SingleConnectionManager :
+    ISelfDeletingObject<SingleConnectionManager>,
+    ISelfDeletingObjectParent<SenderTransferManager>,
+    ISelfDeletingObjectParent<ReceiverTransferManager>
 {
     private enum MessageType
     {
@@ -42,12 +45,16 @@ public class SingleConnectionManager
     
     public string RootDirectory { get; set; } = string.Empty;
 
-    public SingleConnectionManager(Socket socket)
+    public ISelfDeletingObjectParent<SingleConnectionManager> Parent { get; }
+
+    public SingleConnectionManager(Socket socket, ISelfDeletingObjectParent<SingleConnectionManager> parent)
     {
         _socket = socket;
         _requestListener = new RequestListener(socket, HandleIncomingTransferRequestAsync, Message.Size);
         
         _requestListener.Run();
+
+        Parent = parent;
     }
 
     public async Task StartNewTransferAsync(string fileName, CancellationToken cancellationToken = default)
@@ -86,18 +93,14 @@ public class SingleConnectionManager
             return;
         }
 
-        lock (_outgoingTransfers)
-        {
-            var transfer = new SenderTransferManager(socket, RootDirectory, fileName);
-            _outgoingTransfers.Add(transfer);
+        var transfer = new SenderTransferManager(socket, RootDirectory, this, fileName);
             
-            // This is here to prevent a rare situation where the transfer manager is added to the list while the Stop
-            // method is waiting for this lock, which would cause the transfer manager to never be stopped
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _outgoingTransfers.Remove(transfer);
-                transfer.Stop();
-            }
+        lock (_outgoingTransfers) _outgoingTransfers.Add(transfer);
+        
+        // Transfers remove themselves from the list when they are stopped, so we don't need to worry about that here
+        if (cancellationToken.IsCancellationRequested)
+        {
+            transfer.CloseConnectionAndDelete();
         }
         
         _requestListener.Run();
@@ -129,20 +132,17 @@ public class SingleConnectionManager
             return;
         }
 
-        lock (_incomingTransfers)
+        var transfer = new ReceiverTransferManager(socket, RootDirectory, this);
+        
+        lock (_incomingTransfers) _incomingTransfers.Add(transfer);
+        
+        if (cancellationToken.IsCancellationRequested)
         {
-            var transfer = new ReceiverTransferManager(socket, RootDirectory);
-            _incomingTransfers.Add(transfer);
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _incomingTransfers.Remove(transfer);
-                transfer.Stop();
-            }
+            transfer.CloseConnectionAndDelete();
         }
     }
 
-    public void Stop()
+    public void CloseConnection()
     {
         _requestListener.Stop();
         
@@ -151,15 +151,39 @@ public class SingleConnectionManager
         
         _socket.Dispose();
     }
+    
+    public void CloseConnectionAndDelete()
+    {
+        CloseConnection();
+        (this as ISelfDeletingObject<SingleConnectionManager>).RemoveSelfFromParent();
+    }
+    
+    public void RemoveChild(SenderTransferManager child)
+    {
+        lock (_outgoingTransfers) _outgoingTransfers.Remove(child);
+    }
+    
+    public void RemoveChild(ReceiverTransferManager child)
+    {
+        lock (_incomingTransfers) _incomingTransfers.Remove(child);
+    }
 
     private void StopAllOutgoingTransfers()
     {
-        lock (_outgoingTransfers) _outgoingTransfers.ForEach(connection => connection.Stop());  
+        lock (_outgoingTransfers)
+        {
+            _outgoingTransfers.ForEach(connection => connection.CloseConnection());
+            _outgoingTransfers.Clear();
+        }  
     }
 
     private void StopAllIncomingTransfers()
     {
-        lock (_incomingTransfers) _incomingTransfers.ForEach(connection => connection.Stop());
+        lock (_incomingTransfers)
+        {
+            _incomingTransfers.ForEach(connection => connection.CloseConnection());
+            _incomingTransfers.Clear();
+        }
     }
     
     private async Task SendMessageAsync(Message message, CancellationToken cancellationToken = default)

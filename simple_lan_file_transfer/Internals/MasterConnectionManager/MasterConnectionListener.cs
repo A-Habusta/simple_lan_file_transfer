@@ -2,8 +2,15 @@ namespace simple_lan_file_transfer.Internals;
 
 public class MasterConnectionListener : NetworkLoopBase
 {
+    public delegate void NewConnectionHandler(Socket socket, CancellationToken cancellationToken = default);
+    
     private readonly TcpListener _listener = new(IPAddress.Any, Utility.DefaultPort);
-    public List <SingleConnectionManager> Connections { get; } = new();
+    private readonly NewConnectionHandler _newConnectionHandler;
+    
+    public MasterConnectionListener(NewConnectionHandler newConnectionHandler)
+    {
+        _newConnectionHandler = newConnectionHandler;
+    }
 
 
     protected override async Task LoopAsync(CancellationToken cancellationToken)
@@ -13,19 +20,7 @@ public class MasterConnectionListener : NetworkLoopBase
             Socket socket = await _listener.AcceptSocketAsync(cancellationToken);
             if (cancellationToken.IsCancellationRequested) return;
             
-            lock (Connections)
-            {
-                var connectionManager = new SingleConnectionManager(socket);
-                Connections.Add(connectionManager);
-                
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    connectionManager.Stop();
-                    Connections.Remove(connectionManager);
-                    break;
-                }
-
-            }
+            _newConnectionHandler(socket, cancellationToken);
         }
     }
 }

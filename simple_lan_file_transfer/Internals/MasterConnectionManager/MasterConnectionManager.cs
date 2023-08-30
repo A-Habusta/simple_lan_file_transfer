@@ -1,12 +1,18 @@
 namespace simple_lan_file_transfer.Internals;
 
-public class MasterConnectionManager
+public class MasterConnectionManager : ISelfDeletingObjectParent<SingleConnectionManager>
 {
-    public List<SingleConnectionManager> Connections => _listener.Connections;
+    public List<SingleConnectionManager> Connections { get; } = new();
     public List<IPAddress> AvailableIps => _ipBroadcastHandler.AvailableIpAddresses;
 
     private readonly LocalNetworkAvailabilityBroadcastHandler _ipBroadcastHandler = new();
-    private readonly MasterConnectionListener _listener = new();
+    private readonly MasterConnectionListener _listener;
+    
+    public MasterConnectionManager()
+    {
+        _listener = new MasterConnectionListener(newConnectionHandler: CreateAndSaveNewChild);
+        _listener.Run();
+    }
     
     private string _rootDirectory = string.Empty;
     
@@ -23,14 +29,11 @@ public class MasterConnectionManager
     public void Stop()
     {
         _listener.Stop();
+        
         _ipBroadcastHandler.StopBroadcast();
         _ipBroadcastHandler.StopListening();
         
-        lock (Connections)
-        {
-            Connections.ForEach(connection => connection.Stop());
-            Connections.Clear();
-        }
+        CloseAllChildConnections();
     }
 
     public async void ConnectTo(IPAddress ipAddress, CancellationToken cancellationToken = default)
@@ -40,16 +43,38 @@ public class MasterConnectionManager
         
         if (cancellationToken.IsCancellationRequested) return;
         
+        CreateAndSaveNewChild(socket, cancellationToken);
+    }
+    
+    public void RemoveChild(SingleConnectionManager connectionManager)
+    {
         lock (Connections)
         {
-            var connectionManager = new SingleConnectionManager(socket);
-            Connections.Add(connectionManager);
-
-            if (!cancellationToken.IsCancellationRequested) return;
-            
-            connectionManager.Stop();
-            socket.Dispose();
             Connections.Remove(connectionManager);
+        }
+    }
+    
+    public void CloseAllChildConnections()
+    {
+        lock (Connections)
+        {
+            Connections.ForEach(connection => connection.CloseConnection());
+            Connections.Clear();
+        }
+    }
+
+    private void CreateAndSaveNewChild(Socket socket, CancellationToken creationCancellationToken = default)
+    {
+        var connectionManager = new SingleConnectionManager(socket, this);
+        
+        lock (Connections)
+        {
+            Connections.Add(connectionManager);
+        }
+        
+        if (creationCancellationToken.IsCancellationRequested)
+        {
+            connectionManager.CloseConnectionAndDelete();
         }
     }
 }
