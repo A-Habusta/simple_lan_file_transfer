@@ -18,10 +18,13 @@ public class MasterConnectionListener : NetworkLoopBase
                 var connectionManager = new SingleConnectionManager(socket);
                 Connections.Add(connectionManager);
                 
-                if (cancellationToken.IsCancellationRequested) break;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    connectionManager.Stop();
+                    Connections.Remove(connectionManager);
+                    break;
+                }
 
-                connectionManager.Stop();
-                Connections.Remove(connectionManager);
             }
         }
     }
