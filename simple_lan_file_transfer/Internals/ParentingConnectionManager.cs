@@ -14,8 +14,8 @@ public abstract class ParentingConnectionManager<TChild> : IDisposable where TCh
         _requestListener = new RequestListener(port, HandleNewConnectionRequestAsync);
     }
 
-    protected abstract Task HandleNewConnectionRequestAsync(Socket socket, CancellationToken cancellationToken);
-    protected abstract Task<TChild> StartNewConnectionAsync(IPAddress ipAddress, int port, CancellationToken cancellationToken);
+    protected abstract Task HandleNewConnectionRequestAsync(Socket socket, CancellationToken cancellationToken = default);
+    protected abstract Task<TChild> StartNewConnectionAsync(IPAddress ipAddress, int port, CancellationToken cancellationToken = default);
     
     public void Dispose()
     {
