@@ -5,19 +5,22 @@ public abstract class NetworkLoopBase : IDisposable
     protected bool Disposed;
     
     private CancellationTokenSource? _cancellationTokenSource;
-    protected Task? LoopTask;
+    private Task? _loopTask;
     
     protected abstract Task LoopAsync(CancellationToken cancellationToken);
 
-    public void Run()
+    public void RunLoop()
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(NetworkLoopBase));
+        
         _cancellationTokenSource = new CancellationTokenSource();
 
         CancellationToken cancellationToken = _cancellationTokenSource.Token;
-        LoopTask = Task.Run(async () => await LoopAsync(cancellationToken), cancellationToken); 
+        _loopTask = Task.Run(async () => await LoopAsync(cancellationToken), cancellationToken);
+        _loopTask.ContinueWith(_ => CancellationTokenSourceDispose(), CancellationToken.None);
     }
     
-    public void Stop()
+    public void StopLoop()
     {
         _cancellationTokenSource?.Cancel();
     }

@@ -1,6 +1,6 @@
 namespace simple_lan_file_transfer.Internals;
 
-public class LocalNetworkAvailabilityBroadcastHandler
+public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
 {
     private class LocalNetworkAvailabilityBroadcastSender : NetworkLoopBase
     {
@@ -13,8 +13,10 @@ public class LocalNetworkAvailabilityBroadcastHandler
         protected override async Task LoopAsync(CancellationToken cancellationToken)
         {
             var tasks = new List<Task>();
-            while (!cancellationToken.IsCancellationRequested)
+            for(;;)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                
                 foreach ((UdpClient client, var bytes) in _broadcastedAddressesPerInterface)
                 {
                     var task = Task.Run(async () => await client.SendAsync(bytes, cancellationToken), cancellationToken);
@@ -23,6 +25,7 @@ public class LocalNetworkAvailabilityBroadcastHandler
                 
                 await Task.WhenAll(tasks);
                 cancellationToken.ThrowIfCancellationRequested();
+                
                 await Task.Delay(Utility.BroadcastIntervalMs, cancellationToken);
             }
         }
@@ -67,9 +70,21 @@ public class LocalNetworkAvailabilityBroadcastHandler
             
             return new IPAddress(broadcastBytes);
         }
+        
+        protected override void Dispose(bool disposing)
+        {
+            if (Disposed) return;
+            
+            if (disposing)
+            {
+                _broadcastedAddressesPerInterface.ForEach(tuple => tuple.Item1.Dispose());
+            }
+            
+            base.Dispose(disposing);
+        }
     }
 
-    private class LocalNetworkAvailabilityBroadcastReceiver : NetworkLoopBase
+    private class LocalNetworkAvailabilityBroadcastReceiver : NetworkLoopBase 
     {
         private readonly UdpClient _broadcastListener = new(Utility.DefaultBroadcastPort);
         public List<IPAddress> AvailableIpAddresses { get; } = new();
@@ -77,25 +92,45 @@ public class LocalNetworkAvailabilityBroadcastHandler
         protected override async Task LoopAsync(CancellationToken cancellationToken)
         {
             AvailableIpAddresses.Clear();
-            while (!cancellationToken.IsCancellationRequested)
+            for(;;)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                
                 UdpReceiveResult result = await _broadcastListener.ReceiveAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return;
+                cancellationToken.ThrowIfCancellationRequested();
                 
                 var ipAddress = new IPAddress(result.Buffer);
                 AvailableIpAddresses.Add(ipAddress);
             }
         }
+        
+        protected override void Dispose(bool disposing)
+        {
+            if (Disposed) return;
+            
+            if (disposing)
+            {
+                _broadcastListener.Dispose();
+            }
+            
+            base.Dispose(disposing);
+        }
     }
     
     private readonly LocalNetworkAvailabilityBroadcastSender _localNetworkAvailabilityBroadcastSender = new();
     private readonly LocalNetworkAvailabilityBroadcastReceiver _localNetworkAvailabilityBroadcastReceiver = new();
-    
+
     public List<IPAddress> AvailableIpAddresses => _localNetworkAvailabilityBroadcastReceiver.AvailableIpAddresses;
 
-    public void StartBroadcast() => _localNetworkAvailabilityBroadcastSender.Run();
-    public void StopBroadcast() => _localNetworkAvailabilityBroadcastSender.Stop();
+    public void StartBroadcast() => _localNetworkAvailabilityBroadcastSender.RunLoop();
+    public void StopBroadcast() => _localNetworkAvailabilityBroadcastSender.StopLoop();
     
-    public void StartListening() => _localNetworkAvailabilityBroadcastReceiver.Run();
-    public void StopListening() => _localNetworkAvailabilityBroadcastReceiver.Stop();
+    public void StartListening() => _localNetworkAvailabilityBroadcastReceiver.RunLoop();
+    public void StopListening() => _localNetworkAvailabilityBroadcastReceiver.StopLoop();
+
+    public void Dispose()
+    {
+        _localNetworkAvailabilityBroadcastSender.Dispose();
+        _localNetworkAvailabilityBroadcastReceiver.Dispose();
+    }
 }
