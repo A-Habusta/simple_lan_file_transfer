@@ -3,12 +3,13 @@ namespace simple_lan_file_transfer.Internals;
 public class RequestListener : NetworkLoopBase
 {
     public delegate Task NewConnectionHandler(Socket socket, CancellationToken cancellationToken = default);
-    
-    private readonly TcpListener _listener = new(IPAddress.Any, Utility.DefaultPort);
+
     private readonly NewConnectionHandler _newConnectionHandler;
+    private readonly TcpListener _listener;
     
-    public RequestListener(NewConnectionHandler newConnectionHandler)
+    public RequestListener(int port, NewConnectionHandler newConnectionHandler)
     {
+        _listener = new TcpListener(IPAddress.Any, port);
         _newConnectionHandler = newConnectionHandler;
         
         _listener.Start();
