@@ -2,7 +2,7 @@ namespace simple_lan_file_transfer.Internals;
 
 public class RequestListener : NetworkLoopBase
 {
-    public delegate Task NewConnectionHandler(Socket socket, CancellationToken cancellationToken = default);
+    public delegate void NewConnectionHandler(Socket socket);
 
     private readonly NewConnectionHandler _newConnectionHandler;
     private readonly TcpListener _listener;
@@ -28,7 +28,7 @@ public class RequestListener : NetworkLoopBase
                 throw new OperationCanceledException(cancellationToken);
             }
             
-            await _newConnectionHandler(socket, cancellationToken);
+            _newConnectionHandler(socket);
         }
     }
     
