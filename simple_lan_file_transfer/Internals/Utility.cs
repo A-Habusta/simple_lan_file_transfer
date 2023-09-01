@@ -9,4 +9,7 @@ internal static class Utility
     public const ushort DefaultBroadcastPort = 52913;
     
     public const int BroadcastIntervalMs = 2000;
+    
+    public const string DefaultRootDirectory = "ReceivedFiles";
+    public const string DefaultMetadataDirectory = "Metadata";
 }
