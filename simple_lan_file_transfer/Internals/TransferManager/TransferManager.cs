@@ -4,21 +4,17 @@ using System.Text;
 
 public sealed class SenderTransferManager : TransferManagerBase
 {
-   private string _fileName;
-
    public SenderTransferManager(
       Socket socket,
-      string rootDirectory,
-      string fileName)
-      : base(socket, rootDirectory)
+      FileStream fileStream)
+      : base(socket)
    {
-      _fileName = fileName;
    }
    
 
    protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
-      await SendStringAsync(_fileName, MessageType.FileName, cancellationToken);
+      await SendStringAsync("FILENAME WILL BE HERE", MessageType.FileName, cancellationToken);
       if (cancellationToken.IsCancellationRequested) return;
 
       var fileHash = Array.Empty<byte>(); // TODO
@@ -37,7 +33,7 @@ public sealed class SenderTransferManager : TransferManagerBase
 
 public class ReceiverTransferManager : TransferManagerBase
 {
-   public ReceiverTransferManager(Socket socket, string rootDirectory) : base(socket, rootDirectory) {}
+   public ReceiverTransferManager(Socket socket, string rootDirectory) : base(socket) {}
 
 protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
@@ -108,13 +104,9 @@ public abstract class TransferManagerBase : IDisposable
    private readonly CancellationTokenSource _transferCancellationTokenSource = new();
    private readonly Socket _socket;
    
-   // This is just the directory the file will be saved to, not the actual file path
-   protected readonly string FileLocation;
-   
-   public TransferManagerBase(Socket socket, string fileLocation)
+   public TransferManagerBase(Socket socket)
    {
       _socket = socket;
-      FileLocation = fileLocation;
 
       Task.Run(async () => await RunAsync(_transferCancellationTokenSource.Token));
    }
