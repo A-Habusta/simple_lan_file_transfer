@@ -1,9 +1,11 @@
 namespace simple_lan_file_transfer.Internals;
 
-public abstract class NetworkLoopBase
+public abstract class NetworkLoopBase : IDisposable
 {
+    protected bool Disposed;
+    
     private CancellationTokenSource? _cancellationTokenSource;
-    private Task? _loopTask;
+    protected Task? LoopTask;
     
     protected abstract Task LoopAsync(CancellationToken cancellationToken);
 
@@ -11,20 +13,38 @@ public abstract class NetworkLoopBase
     {
         _cancellationTokenSource = new CancellationTokenSource();
 
-        _loopTask = Task.Run(async () => await LoopAsync(_cancellationTokenSource.Token));
-        _loopTask.ContinueWith(_ => CancellationTokenSourceDispose());
+        CancellationToken cancellationToken = _cancellationTokenSource.Token;
+        LoopTask = Task.Run(async () => await LoopAsync(cancellationToken), cancellationToken); 
     }
     
     public void Stop()
     {
-        if (_cancellationTokenSource?.IsCancellationRequested == false)
+        _cancellationTokenSource?.Cancel();
+    }
+    
+    public void Dispose()
+    {
+        if (Disposed) return;
+        
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+    
+    protected virtual void Dispose(bool disposing)
+    {
+        if (Disposed) return;
+        
+        if (disposing)
         {
-            _cancellationTokenSource.Cancel();
+            CancellationTokenSourceDispose();
         }
+        
+        Disposed = true;
     }
     
     private void CancellationTokenSourceDispose()
     {
+        _cancellationTokenSource?.Cancel();
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = null; 
     }

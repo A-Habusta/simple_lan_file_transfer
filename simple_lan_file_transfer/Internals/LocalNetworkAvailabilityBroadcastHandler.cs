@@ -22,7 +22,7 @@ public class LocalNetworkAvailabilityBroadcastHandler
                 }
                 
                 await Task.WhenAll(tasks);
-                if (cancellationToken.IsCancellationRequested) return;
+                cancellationToken.ThrowIfCancellationRequested();
                 await Task.Delay(Utility.BroadcastIntervalMs, cancellationToken);
             }
         }
