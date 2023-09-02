@@ -9,21 +9,23 @@ public abstract class FileAccessManager : IDisposable
 {
     protected bool Disposed;
     
-    protected FileStream? FileStream;
-    private HashAlgorithm _hashAlgorithm;
+    protected readonly FileStream? FileStream;
+    private readonly HashAlgorithm _hashAlgorithm;
 
     protected FileAccessManager()
     {
         _hashAlgorithm = MD5.Create();
     }
     
-    public FileAccessManager(FileStream fileStream) : this()
+    protected FileAccessManager(FileStream fileStream) : this()
     {
         FileStream = fileStream;
     }
     
     public void SeekToBlock(long block)
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(FileAccessManager));
+    
         if (FileStream is null) return;
         
         FileStream!.Seek(block * Utility.BlockSize, SeekOrigin.Begin);
@@ -31,6 +33,8 @@ public abstract class FileAccessManager : IDisposable
     
     public async Task<byte[]> GetFileHashAsync(CancellationToken cancellationToken = default)
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(FileAccessManager));
+        
         if (FileStream is null) return Array.Empty<byte>();
         
         FileStream!.Seek(0, SeekOrigin.Begin);
@@ -86,6 +90,8 @@ public sealed class WriterFileAccessManager : FileAccessManager
     
     public void WriteNextBlock(byte[] block)
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(WriterFileAccessManager));
+        
         if (FileStream is null) return;
         
         FileStream!.Write(block);
@@ -95,6 +101,8 @@ public sealed class WriterFileAccessManager : FileAccessManager
 
     public void OpenMetadataFile(byte[] fileHash)
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(WriterFileAccessManager));
+        
         var fileName = BitConverter.ToString(fileHash);
         
         var metadataPath = Path.Combine(_receiveRootDirectory, Utility.DefaultMetadataDirectory);
@@ -113,6 +121,8 @@ public sealed class WriterFileAccessManager : FileAccessManager
     
     public long ReadFileLastWrittenBlock()
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(WriterFileAccessManager));
+        
         if (_metadataFileStream is null) return 0;
         
         var block = new byte[sizeof(long)];
@@ -128,6 +138,8 @@ public sealed class WriterFileAccessManager : FileAccessManager
     
     private string ReadFileName()
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(WriterFileAccessManager));
+        
         if (_metadataFileStream is null) return string.Empty;
         
         var fileName = new byte[_metadataFileStream.Length - sizeof(long)];
@@ -142,6 +154,8 @@ public sealed class WriterFileAccessManager : FileAccessManager
     
     private void WriteLastBlockWritten(long block)
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(WriterFileAccessManager));
+        
         _metadataFileStream!.Seek(sizeof(long), SeekOrigin.Begin);
         _metadataFileStream!.Write(BitConverter.GetBytes(block));
         _metadataFileStream!.Flush();
@@ -149,6 +163,8 @@ public sealed class WriterFileAccessManager : FileAccessManager
     
     private void WriteFileName(string fileName)
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(WriterFileAccessManager));
+        
         _metadataFileStream!.Seek(sizeof(long), SeekOrigin.Begin);
         _metadataFileStream!.Write(Encoding.UTF8.GetBytes(fileName));
         _metadataFileStream!.Flush();
@@ -198,6 +214,8 @@ public sealed class ReaderFileAccessManager : FileAccessManager
     
     public byte[] ReadNextBlock()
     {
+        if (Disposed) throw new ObjectDisposedException(nameof(ReaderFileAccessManager));
+        
         if (FileStream is null) return Array.Empty<byte>();
         
         const int blockSize = Utility.BlockSize;
