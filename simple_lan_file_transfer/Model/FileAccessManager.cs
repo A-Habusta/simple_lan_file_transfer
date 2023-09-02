@@ -12,6 +12,9 @@ public abstract class FileAccessManager : IDisposable
     protected readonly FileStream? FileStream;
     private readonly HashAlgorithm _hashAlgorithm;
 
+    protected long UsedBlockCounter = -1;
+    public long FileBlocksCount { get; init; }
+    
     protected FileAccessManager()
     {
         _hashAlgorithm = MD5.Create();
@@ -20,6 +23,7 @@ public abstract class FileAccessManager : IDisposable
     protected FileAccessManager(FileStream fileStream) : this()
     {
         FileStream = fileStream;
+        FileBlocksCount = CalculateFileBlockCount(FileStream.Length);
     }
     
     public void SeekToBlock(long block)
@@ -39,6 +43,14 @@ public abstract class FileAccessManager : IDisposable
         
         FileStream!.Seek(0, SeekOrigin.Begin);
         return await _hashAlgorithm.ComputeHashAsync(FileStream!, cancellationToken);
+    }
+    
+    public double GetProgress()
+    {
+        if (Disposed) throw new ObjectDisposedException(nameof(FileAccessManager));
+        if (FileBlocksCount <= 0) return 0;
+        
+        return UsedBlockCounter / (double) FileBlocksCount;
     }
 
     public void Dispose()
@@ -60,6 +72,11 @@ public abstract class FileAccessManager : IDisposable
         
         Disposed = true;
     }
+
+    private static long CalculateFileBlockCount(long fileSize)
+    {
+        return (long) Math.Ceiling(fileSize / (double) Utility.BlockSize);
+    }
 }
 
 //TODO Implement opening file for writing
@@ -68,8 +85,6 @@ public sealed class WriterFileAccessManager : FileAccessManager
     private readonly string _receiveRootDirectory;
     private FileStream? _metadataFileStream;
     private string _fileName;
-
-    private long _blockCounter;
 
     public WriterFileAccessManager(string receiveRootDirectory, string fileName)
     {
@@ -96,7 +111,7 @@ public sealed class WriterFileAccessManager : FileAccessManager
         
         FileStream!.Write(block);
         
-        WriteLastBlockWritten(_blockCounter++);
+        WriteLastBlockWritten(++UsedBlockCounter);
     }
 
     public void OpenMetadataFile(byte[] fileHash)
@@ -174,7 +189,7 @@ public sealed class WriterFileAccessManager : FileAccessManager
     {
         _metadataFileStream = File.Create(metadataFilePath);
         
-        WriteLastBlockWritten(_blockCounter);
+        WriteLastBlockWritten(UsedBlockCounter);
         WriteFileName(_fileName);
         
         _metadataFileStream.Flush();
@@ -225,6 +240,7 @@ public sealed class ReaderFileAccessManager : FileAccessManager
         
         if (read != blockSize) Array.Resize(ref block, read);
         
+        ++UsedBlockCounter;
         return block;
     }
 }

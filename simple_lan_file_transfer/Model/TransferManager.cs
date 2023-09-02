@@ -68,10 +68,15 @@ public class ReceiverTransferManager : TransferManagerBase
    protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
       var originalFileNameMessage = await ReceiveStringAsync(cancellationToken);
+      var fileBlockCountMessage = await ReceiveInt64Async(cancellationToken);
+      
       cancellationToken.ThrowIfCancellationRequested();
       
       // TODO check if user wants to change filename
-      FileAccess = new WriterFileAccessManager(_rootDirectory, originalFileNameMessage.Data);
+      FileAccess = new WriterFileAccessManager(_rootDirectory, originalFileNameMessage.Data)
+      {
+         FileBlocksCount = fileBlockCountMessage.Data
+      };
       
       var fileHashMessage = await ReceiveBytesAsync(cancellationToken);
       cancellationToken.ThrowIfCancellationRequested();
