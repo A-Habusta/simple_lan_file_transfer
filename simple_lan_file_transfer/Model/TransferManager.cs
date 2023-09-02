@@ -4,57 +4,107 @@ using System.Text;
 
 public sealed class SenderTransferManager : TransferManagerBase
 {
-   public SenderTransferManager(
-      Socket socket,
-      FileStream fileStream)
-      : base(socket)
+   public ReaderFileAccessManager FileAccess { get; }
+   private string _fileName;
+
+   public SenderTransferManager(Socket socket, FileStream fileStream) : base(socket)
    {
+      FileAccess = new ReaderFileAccessManager(fileStream);
+      _fileName = Path.GetFileName(fileStream.Name);
    }
-   
 
    protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
-      await SendStringAsync("FILENAME WILL BE HERE", MessageType.FileName, cancellationToken);
-      if (cancellationToken.IsCancellationRequested) return;
+      await SendAsync(new Message<string>{ Data = _fileName, Type = MessageType.FileName }, cancellationToken);
+      cancellationToken.ThrowIfCancellationRequested();
 
-      var fileHash = Array.Empty<byte>(); // TODO
+      var fileHash = await FileAccess.GetFileHashAsync(cancellationToken);
+      await SendAsync(new Message<byte[]> { Data = fileHash, Type = MessageType.FileHash }, cancellationToken);
 
-      await SendBytesAsync(fileHash, MessageType.FileHash, cancellationToken);
-
-      var lastBlockRead = await ReceiveUnsignedLongAsync(MessageType.LastBlockReadResponse, cancellationToken);
-      //TODO finish configuration
+      var lastBlockReadMessage = await ReceiveInt64Async(cancellationToken);
+      cancellationToken.ThrowIfCancellationRequested();
+      
+      FileAccess.SeekToBlock(lastBlockReadMessage.Data);
    }
    
    protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
    {
-      // TODO program file manager
+      for (;;)
+      {
+         var block = FileAccess.ReadNextBlock();
+         await SendAsync(new Message<byte[]>{ Data = block, Type = MessageType.FileBlock}, cancellationToken);
+         cancellationToken.ThrowIfCancellationRequested();
+
+         if (block.LongLength >= Utility.BlockSize) continue;
+         
+         await SendEndOfTransferMessage(cancellationToken);
+         break;
+      }
+   }
+
+   protected override void Dispose(bool disposing)
+   {
+      if (Disposed) return;
+
+      if (disposing)
+      {
+         FileAccess.Dispose();
+      }
+      
+      base.Dispose(disposing);
    }
 }
 
 public class ReceiverTransferManager : TransferManagerBase
 {
-   public ReceiverTransferManager(Socket socket, string rootDirectory) : base(socket) {}
+   private readonly string _rootDirectory;
+   public WriterFileAccessManager? FileAccess { get; private set; }
 
-protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
+   public ReceiverTransferManager(Socket socket, string rootDirectory) : base(socket)
    {
-       var originalFileName = await ReceiveStringAsync(MessageType.FileName, cancellationToken);
+      _rootDirectory = rootDirectory;
+   }
+
+   protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
+   {
+       var originalFileNameMessage = await ReceiveStringAsync(cancellationToken);
+       cancellationToken.ThrowIfCancellationRequested();
        
        // TODO check if user wants to change filename
+       FileAccess = new WriterFileAccessManager(_rootDirectory, originalFileNameMessage.Data);
        
-       var fileHash = await ReceiveBytesAsync(MessageType.FileHash, cancellationToken);
+       var fileHashMessage = await ReceiveBytesAsync(cancellationToken);
+       cancellationToken.ThrowIfCancellationRequested();
        
-       // TODO save hash
-       
-       var lastBlockRead = Array.Empty<byte>(); // TODO get last block read
-       
-       await SendBytesAsync(lastBlockRead, MessageType.LastBlockReadResponse, cancellationToken);
-       
-       // TODO finish configuration
+       FileAccess.OpenMetadataFile(fileHashMessage.Data);
+
+       var lastBlockRead = FileAccess.ReadFileLastWrittenBlock();
+       await SendAsync(new Message<long>{ Data = lastBlockRead, Type = MessageType.LastBlockReadResponse }, cancellationToken);
    }
    
    protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
    {
-      // TODO program file manager
+      for (;;)
+      {
+         var message = await ReceiveBytesAsync(cancellationToken);
+         cancellationToken.ThrowIfCancellationRequested();
+
+         if (message.Type == MessageType.EndOfTransfer) break;
+         
+         FileAccess?.WriteNextBlock(message.Data);
+      }
+   }
+   
+   protected override void Dispose(bool disposing)
+   {
+      if (Disposed) return;
+
+      if (disposing)
+      {
+         FileAccess?.Dispose();
+      }
+      
+      base.Dispose(disposing);
    }
 }
 
@@ -65,7 +115,8 @@ public abstract class TransferManagerBase : IDisposable
       FileName,
       FileHash,
       FileBlock,
-      LastBlockReadResponse
+      LastBlockReadResponse,
+      EndOfTransfer
    }
    
    protected readonly struct Header
@@ -73,7 +124,7 @@ public abstract class TransferManagerBase : IDisposable
       public const int Size = 9;
       
       public MessageType Type { get; init; }
-      public ulong DataSize { get; init; }
+      public long DataSize { get; init; }
       
       public byte[] ToBytes()
       {
@@ -88,7 +139,7 @@ public abstract class TransferManagerBase : IDisposable
          return new Header
          {
             Type = (MessageType)bytes[0],
-            DataSize = BitConverter.ToUInt64(bytes.AsSpan(1, 8))
+            DataSize = BitConverter.ToInt64(bytes.AsSpan(1, 8))
          };
       }
    }
@@ -98,13 +149,19 @@ public abstract class TransferManagerBase : IDisposable
       public Header Header { get; init; }
       public byte[] Data { get; init; }
    }
+
+   protected readonly struct Message<T>
+   {
+      public T Data { get; init; }
+      public MessageType Type { get; init; }
+   }
    
-   private bool _disposed;
+   protected bool Disposed;
       
    private readonly CancellationTokenSource _transferCancellationTokenSource = new();
    private readonly Socket _socket;
    
-   public TransferManagerBase(Socket socket)
+   protected TransferManagerBase(Socket socket)
    {
       _socket = socket;
 
@@ -113,7 +170,7 @@ public abstract class TransferManagerBase : IDisposable
    
    public void Dispose()
    {
-      if (_disposed) return;
+      if (Disposed) return;
       
       Dispose(true);
       GC.SuppressFinalize(this);
@@ -121,7 +178,7 @@ public abstract class TransferManagerBase : IDisposable
    
    protected virtual void Dispose(bool disposing)
    {
-      if (_disposed) return;
+      if (Disposed) return;
       
       if (disposing)
       {
@@ -129,7 +186,7 @@ public abstract class TransferManagerBase : IDisposable
          _transferCancellationTokenSource.Dispose();
       }
       
-      _disposed = true;
+      Disposed = true;
    }
    
    protected async Task SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
@@ -148,46 +205,57 @@ public abstract class TransferManagerBase : IDisposable
          Data = data
       };
    }
+
+   protected async Task SendEndOfTransferMessage(CancellationToken cancellationToken = default)
+   {
+      var message = new Message<byte[]>
+      {
+         Data = Array.Empty<byte>(),
+         Type = MessageType.EndOfTransfer
+      };
+
+      await SendAsync(message, cancellationToken);
+   }
    
-   protected async Task SendBytesAsync(byte[] bytes, MessageType messageType, CancellationToken cancellationToken = default)
+   protected async Task SendAsync(Message<byte[]> message, CancellationToken cancellationToken = default)
    {
       var header = new Header
       {
-         Type = messageType,
-         DataSize = (ulong)bytes.Length
+         Type = message.Type,
+         DataSize = message.Data.LongLength
       };
       var fullMessage = new FullMessage
       {
          Header = header,
-         Data = bytes
+         Data = message.Data
       };
       
       await SendFullMessageAsync(fullMessage, cancellationToken);
    }
    
-   protected async Task<byte[]?> ReceiveBytesAsync(MessageType messageType, CancellationToken cancellationToken = default)
+   protected async Task SendAsync(Message<string> message, CancellationToken cancellationToken = default)
    {
-      return await ReceiveAsync(messageType, bytes => bytes, cancellationToken);
+      await SendAsync(message, Encoding.UTF8.GetBytes, cancellationToken);
    }
    
-   protected async Task SendStringAsync(string str, MessageType messageType, CancellationToken cancellationToken = default)
+   protected async Task SendAsync(Message<long> message, CancellationToken cancellationToken = default)
    {
-      await SendAsync(str, messageType, Encoding.UTF8.GetBytes, cancellationToken);
+      await SendAsync(message, BitConverter.GetBytes, cancellationToken);
    }
    
-   protected async Task<string?> ReceiveStringAsync(MessageType messageType, CancellationToken cancellationToken = default)
+   protected async Task<Message<byte[]>> ReceiveBytesAsync(CancellationToken cancellationToken = default)
    {
-      return await ReceiveAsync(messageType, bytes => Encoding.UTF8.GetString(bytes), cancellationToken);
+      return await ReceiveAsync(bytes => bytes, cancellationToken);
    }
    
-   protected async Task SendUnsignedLongAsync(ulong num, MessageType messageType, CancellationToken cancellationToken = default)
+   protected async Task<Message<string>> ReceiveStringAsync(CancellationToken cancellationToken = default)
    {
-      await SendAsync(num, messageType, BitConverter.GetBytes, cancellationToken);
+      return await ReceiveAsync(bytes => Encoding.UTF8.GetString(bytes), cancellationToken);
    }
    
-   protected async Task<ulong?> ReceiveUnsignedLongAsync(MessageType messageType, CancellationToken cancellationToken = default)
+   protected async Task<Message<long>> ReceiveInt64Async(CancellationToken cancellationToken = default)
    {
-      return await ReceiveAsync(messageType, bytes => BitConverter.ToUInt64(bytes), cancellationToken);
+      return await ReceiveAsync(bytes => BitConverter.ToInt64(bytes), cancellationToken);
    }
    
    
@@ -195,33 +263,37 @@ public abstract class TransferManagerBase : IDisposable
    protected abstract Task HandleFileTransferAsync(CancellationToken cancellationToken = default);
    
    private async Task SendAsync<T>(
-      T data,
-      MessageType messageType,
+      Message<T> message,
       Func<T, byte[]> dataToBytes,
       CancellationToken cancellationToken = default)
    {
-      await SendBytesAsync(dataToBytes(data), messageType, cancellationToken);
+      var outputMessage = new Message<byte[]>
+      {
+         Data = dataToBytes(message.Data),
+         Type = message.Type
+      };
+      
+      await SendAsync(outputMessage, cancellationToken);
    }
    
-   private async Task<T?> ReceiveAsync<T>(
-      MessageType expectedMessageType,
+   private async Task<Message<T>> ReceiveAsync<T>(
       Func<byte[], T> bytesToData,
       CancellationToken cancellationToken = default)
    {
       FullMessage fullMessage = await ReceiveFullMessageAsync(cancellationToken);
-      if (cancellationToken.IsCancellationRequested) return default;
-      
-      if (fullMessage.Header.Type != expectedMessageType)
-      {
-         throw new IOException("Received unexpected message type");
-      }
-      
-      if ((ulong)fullMessage.Data.Length != fullMessage.Header.DataSize)
+      cancellationToken.ThrowIfCancellationRequested();
+
+      if (fullMessage.Data.LongLength != fullMessage.Header.DataSize)
       {
          throw new IOException("Received unexpected data size");
       }
-      
-      return cancellationToken.IsCancellationRequested ? default : bytesToData(fullMessage.Data);
+      cancellationToken.ThrowIfCancellationRequested();
+
+      return new Message<T>
+      {
+         Data = bytesToData(fullMessage.Data),
+         Type = fullMessage.Header.Type
+      };
    }
 
    private async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
@@ -241,7 +313,7 @@ public abstract class TransferManagerBase : IDisposable
       await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
    }
    
-   private async Task<byte[]> ReceiveDataAsync(ulong dataSize, CancellationToken cancellationToken = default)
+   private async Task<byte[]> ReceiveDataAsync(long dataSize, CancellationToken cancellationToken = default)
    {
       var buffer = new byte[dataSize];
       await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
