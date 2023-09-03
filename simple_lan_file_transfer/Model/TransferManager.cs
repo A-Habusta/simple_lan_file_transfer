@@ -18,7 +18,7 @@ public sealed class SenderTransferManager : TransferManagerBase
       _fileName = Path.GetFileName(fileStream.Name);
    }
 
-   protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
+   public override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
       await SendAsync(new Message<string>{ Data = _fileName, Type = MessageType.FileName }, cancellationToken);
       cancellationToken.ThrowIfCancellationRequested();
@@ -32,7 +32,7 @@ public sealed class SenderTransferManager : TransferManagerBase
       FileAccess.SeekToBlock(lastBlockReadMessage.Data);
    }
    
-   protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
+   public override async Task RunFileTransferAsync(CancellationToken cancellationToken = default)
    {
       for (;;)
       {
@@ -76,7 +76,7 @@ public class ReceiverTransferManager : TransferManagerBase
       _rootDirectory = rootDirectory;
    }
 
-   protected override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
+   public override async Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default)
    {
       var originalFileNameMessage = await ReceiveStringAsync(cancellationToken);
       var fileBlockCountMessage = await ReceiveInt64Async(cancellationToken);
@@ -98,7 +98,7 @@ public class ReceiverTransferManager : TransferManagerBase
       await SendAsync(new Message<long>{ Data = lastBlockRead, Type = MessageType.LastBlockReadResponse }, cancellationToken);
    }
    
-   protected override async Task HandleFileTransferAsync(CancellationToken cancellationToken = default)
+   public override async Task RunFileTransferAsync(CancellationToken cancellationToken = default)
    {
       for (;;)
       {
@@ -183,8 +183,6 @@ public abstract class TransferManagerBase : IDisposable
    protected TransferManagerBase(Socket socket)
    {
       _socket = socket;
-
-      Task.Run(async () => await RunAsync(_transferCancellationTokenSource.Token));
    }
    
    public void Dispose()
@@ -278,8 +276,8 @@ public abstract class TransferManagerBase : IDisposable
    }
    
    
-   protected abstract Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default);
-   protected abstract Task HandleFileTransferAsync(CancellationToken cancellationToken = default);
+   public abstract Task CommunicateTransferParametersAsync(CancellationToken cancellationToken = default);
+   public abstract Task RunFileTransferAsync(CancellationToken cancellationToken = default);
    
    private async Task SendAsync<T>(
       Message<T> message,
@@ -337,11 +335,5 @@ public abstract class TransferManagerBase : IDisposable
       var buffer = new byte[dataSize];
       await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
       return cancellationToken.IsCancellationRequested ? Array.Empty<byte>() : buffer;
-   }
-
-   private async Task RunAsync(CancellationToken cancellationToken)
-   {
-      await CommunicateTransferParametersAsync(cancellationToken);
-      await HandleFileTransferAsync(cancellationToken);
    }
 }
