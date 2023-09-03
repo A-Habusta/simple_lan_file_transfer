@@ -2,9 +2,15 @@ namespace simple_lan_file_transfer.Internals;
 
 using System.Text;
 
-public sealed class SenderTransferManager : TransferManagerBase<ReaderFileAccessManager>
+public sealed class SenderTransferManager : TransferManagerBase
 {
    private string _fileName;
+   
+   public new ReaderFileAccessManager FileAccess
+   {
+      get => (ReaderFileAccessManager)base.FileAccess!;
+      private init => base.FileAccess = value;
+   }
 
    public SenderTransferManager(Socket socket, FileStream fileStream) : base(socket)
    {
@@ -17,7 +23,7 @@ public sealed class SenderTransferManager : TransferManagerBase<ReaderFileAccess
       await SendAsync(new Message<string>{ Data = _fileName, Type = MessageType.FileName }, cancellationToken);
       cancellationToken.ThrowIfCancellationRequested();
 
-      var fileHash = await FileAccess!.GetFileHashAsync(cancellationToken);
+      var fileHash = await FileAccess.GetFileHashAsync(cancellationToken);
       await SendAsync(new Message<byte[]> { Data = fileHash, Type = MessageType.FileHash }, cancellationToken);
 
       var lastBlockReadMessage = await ReceiveInt64Async(cancellationToken);
@@ -30,7 +36,7 @@ public sealed class SenderTransferManager : TransferManagerBase<ReaderFileAccess
    {
       for (;;)
       {
-         var block = FileAccess!.ReadNextBlock();
+         var block = FileAccess.ReadNextBlock();
          await SendAsync(new Message<byte[]>{ Data = block, Type = MessageType.FileBlock}, cancellationToken);
          cancellationToken.ThrowIfCancellationRequested();
 
@@ -47,15 +53,20 @@ public sealed class SenderTransferManager : TransferManagerBase<ReaderFileAccess
 
       if (disposing)
       {
-         FileAccess!.Dispose();
+         FileAccess.Dispose();
       }
       
       base.Dispose(disposing);
    }
 }
 
-public class ReceiverTransferManager : TransferManagerBase<WriterFileAccessManager>
+public class ReceiverTransferManager : TransferManagerBase
 {
+   public new WriterFileAccessManager? FileAccess
+   {
+      get => (WriterFileAccessManager?)base.FileAccess;
+      private set => base.FileAccess = value;
+   }
    private readonly string _rootDirectory;
    
    public ReceiverTransferManager(Socket socket, string rootDirectory) : base(socket)
@@ -111,7 +122,7 @@ public class ReceiverTransferManager : TransferManagerBase<WriterFileAccessManag
    }
 }
 
-public abstract class TransferManagerBase<TFileAccessManager> : IDisposable where TFileAccessManager : FileAccessManager
+public abstract class TransferManagerBase : IDisposable 
 {
    protected enum MessageType
    {
@@ -161,7 +172,7 @@ public abstract class TransferManagerBase<TFileAccessManager> : IDisposable wher
    
    protected bool Disposed;
    
-   public TFileAccessManager? FileAccess { get; protected set; }
+   public FileAccessManager? FileAccess { get; protected set; }
       
    private readonly CancellationTokenSource _transferCancellationTokenSource = new();
    private readonly Socket _socket;
