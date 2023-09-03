@@ -10,7 +10,7 @@ public sealed class MasterConnectionManager
         _requestListener.Start();
     }
 
-    public async Task<ReceiverTransferManager> StartNewIncomingTransferAsync (CancellationToken cancellationToken = default)
+    public async Task<Socket> StartNewIncomingTransferAsync (CancellationToken cancellationToken = default)
     {
         Socket socket = await _requestListener.AcceptSocketAsync(cancellationToken);
         if (cancellationToken.IsCancellationRequested)
@@ -18,23 +18,22 @@ public sealed class MasterConnectionManager
             socket.Close();
             throw new OperationCanceledException();
         }
-        
-        ReceiverTransferManager transfer = new(socket, RootDirectory);
-        return transfer;
+
+        return socket;
     }
 
-    public static async Task<SenderTransferManager> StartNewOutgoingTransferAsync(IPAddress ipAddress, int port,
-        FileStream file, CancellationToken cancellationToken = default)
+    public static async Task<Socket> StartNewOutgoingTransferAsync(IPAddress ipAddress, int port, 
+        CancellationToken cancellationToken = default)
     {
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         await socket.ConnectAsync(ipAddress, port, cancellationToken);
+        
         if (cancellationToken.IsCancellationRequested)
         {
             socket.Close();
             throw new OperationCanceledException();
         }
-
-        SenderTransferManager transfer = new(socket, file);
-        return transfer;
+        
+        return socket;
     }
 }
