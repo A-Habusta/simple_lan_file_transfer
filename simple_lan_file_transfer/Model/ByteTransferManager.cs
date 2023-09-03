@@ -22,7 +22,8 @@ public interface IByteSender
       Func<T, byte[]> dataToBytes,
       CancellationToken cancellationToken = default);
    
-   Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default);
+   Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
+      SendAsync(message, data => data, cancellationToken);
 }
 
 public interface IByteReceiver
@@ -31,7 +32,8 @@ public interface IByteReceiver
       Func<byte[], T> bytesToData,
       CancellationToken cancellationToken = default);
    
-   Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default);
+   Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default) =>
+      ReceiveAsync(data => data, cancellationToken);
 }
 
 public interface IByteTransferManager : IByteSender, IByteReceiver {}
@@ -133,20 +135,6 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
          Data = bytesToData(fullMessage.Data),
          Type = fullMessage.Header.Type
       };
-   }
-
-   public async Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default)
-   {
-      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
-      
-      await SendAsync(message, data => data, cancellationToken);
-   }
-   
-   public async Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default)
-   {
-      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
-      
-      return await ReceiveAsync(data => data, cancellationToken);
    }
 
    private async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
