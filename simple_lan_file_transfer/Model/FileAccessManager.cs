@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace simple_lan_file_transfer.Internals;
+namespace simple_lan_file_transfer.Models;
 
 // These classes won't use async methods because of significant performance loss when using them for small reads/writes. 
 

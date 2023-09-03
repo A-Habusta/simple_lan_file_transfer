@@ -1,4 +1,4 @@
-namespace simple_lan_file_transfer.Internals;
+namespace simple_lan_file_transfer.Models;
 
 public abstract class NetworkLoopBase : IDisposable
 {
