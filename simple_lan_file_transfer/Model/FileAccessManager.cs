@@ -1,18 +1,40 @@
-using System.Security.Cryptography;
 using System.Text;
+using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
 
 namespace simple_lan_file_transfer.Models;
 
 // These classes won't use async methods because of significant performance loss when using them for small reads/writes. 
 
-public abstract class FileAccessManager : IDisposable
+public abstract class FileAccessManager : IDisposable, INotifyPropertyChanged
 {
+
     protected bool Disposed;
-    
+
     protected readonly FileStream? FileStream;
     private readonly HashAlgorithm _hashAlgorithm;
 
-    protected long UsedBlockCounter = 0;
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected void OnPropertyChanged(string propertyName) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    protected void SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = "")
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        OnPropertyChanged(propertyName);
+    }
+
+
+    private long _usedBlockCounter;
+
+    public long UsedBlockCounter
+    {
+        get => _usedBlockCounter;
+        private set => SetProperty(ref _usedBlockCounter, value);
+    }
+
     public long FileBlocksCount { get; init; }
     
     protected FileAccessManager()
