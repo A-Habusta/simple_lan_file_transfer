@@ -15,21 +15,26 @@ public readonly struct ByteMessage<T>
    public ByteMessageType Type { get; init; }
 }
 
-public interface IByteTransferManager
+public interface IByteSender
 {
    Task SendAsync<T>(
       ByteMessage<T> byteMessage,
       Func<T, byte[]> dataToBytes,
       CancellationToken cancellationToken = default);
    
+   Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default);
+}
+
+public interface IByteReceiver
+{
    Task<ByteMessage<T>> ReceiveAsync<T>(
       Func<byte[], T> bytesToData,
       CancellationToken cancellationToken = default);
    
-   Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default);
-   
    Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default);
 }
+
+public interface IByteTransferManager : IByteSender, IByteReceiver {}
 
 public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
 {
