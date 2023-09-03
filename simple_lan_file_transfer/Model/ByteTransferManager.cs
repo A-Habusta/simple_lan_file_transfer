@@ -15,30 +15,30 @@ public readonly struct ByteMessage<T>
    public ByteMessageType Type { get; init; }
 }
 
-public interface IByteSender
+public interface IByteSenderAsync
 {
-   Task SendAsync<T>(
+   ValueTask SendAsync<T>(
       ByteMessage<T> byteMessage,
       Func<T, byte[]> dataToBytes,
       CancellationToken cancellationToken = default);
    
-   Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
+   ValueTask SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
       SendAsync(message, data => data, cancellationToken);
 }
 
-public interface IByteReceiver
+public interface IByteReceiverAsync
 {
-   Task<ByteMessage<T>> ReceiveAsync<T>(
+   ValueTask<ByteMessage<T>> ReceiveAsync<T>(
       Func<byte[], T> bytesToData,
       CancellationToken cancellationToken = default);
    
-   Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default) =>
+   ValueTask<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default) =>
       ReceiveAsync(data => data, cancellationToken);
 }
 
-public interface IByteTransferManager : IByteSender, IByteReceiver {}
+public interface IByteTransferManagerAsync : IByteSenderAsync, IByteReceiverAsync {}
 
-public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
+public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferManagerAsync
 {
    private readonly struct Header
    {
@@ -91,17 +91,17 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
    
    private readonly Socket _socket;
    
-   public NetworkTransferManager(Socket socket)
+   public NetworkTransferManagerAsync(Socket socket)
    {
       _socket = socket;
    }
 
-   public async Task SendAsync<T>(
+   public async ValueTask SendAsync<T>(
       ByteMessage<T> byteMessage,
       Func<T, byte[]> dataToBytes,
       CancellationToken cancellationToken = default)
    {
-      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
+      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManagerAsync));
       cancellationToken.ThrowIfCancellationRequested();
       
       var buffer = dataToBytes(byteMessage.Data);
@@ -120,11 +120,11 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       await SendFullMessageAsync(fullMessage, cancellationToken);
    }
    
-   public async Task<ByteMessage<T>> ReceiveAsync<T>(
+   public async ValueTask<ByteMessage<T>> ReceiveAsync<T>(
       Func<byte[], T> bytesToData,
       CancellationToken cancellationToken = default)
    {
-      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
+      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManagerAsync));
       cancellationToken.ThrowIfCancellationRequested();
       
       FullMessage fullMessage = await ReceiveFullMessageAsync(cancellationToken);
@@ -137,7 +137,7 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       };
    }
 
-   private async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
+   private async ValueTask SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
    {
       var sent = await _socket.SendAsync(header.ToBytes(), SocketFlags.None, cancellationToken);
       
@@ -145,7 +145,7 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       if (sent != Header.Size) throw new IOException("Failed to send all bytes");
    }
    
-   private async Task<Header> ReceiveHeaderAsync(CancellationToken cancellationToken = default)
+   private async ValueTask<Header> ReceiveHeaderAsync(CancellationToken cancellationToken = default)
    {
       var buffer = new byte[Header.Size];
       var received = await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
@@ -156,7 +156,7 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       return Header.FromBytes(buffer);
    }
    
-   private async Task SendDataAsync(byte[] data, CancellationToken cancellationToken = default)
+   private async ValueTask SendDataAsync(byte[] data, CancellationToken cancellationToken = default)
    {
       var sent = await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
       
@@ -164,7 +164,7 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       if (sent != data.Length) throw new IOException("Failed to send all bytes");
    }
    
-   private async Task<byte[]> ReceiveDataAsync(long dataSize, CancellationToken cancellationToken = default)
+   private async ValueTask<byte[]> ReceiveDataAsync(long dataSize, CancellationToken cancellationToken = default)
    {
       var buffer = new byte[dataSize];
       var received = await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
@@ -175,13 +175,13 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       return buffer;
    }
    
-   private async Task SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
+   private async ValueTask SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
    {
       await SendHeaderAsync(message.Header, cancellationToken);
       await SendDataAsync(message.Data, cancellationToken);
    }
    
-   private async Task<FullMessage> ReceiveFullMessageAsync(CancellationToken cancellationToken = default)
+   private async ValueTask<FullMessage> ReceiveFullMessageAsync(CancellationToken cancellationToken = default)
    {
       Header header = await ReceiveHeaderAsync(cancellationToken);
       var data = await ReceiveDataAsync(header.DataSize, cancellationToken);
