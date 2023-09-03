@@ -94,6 +94,7 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       Func<T, byte[]> dataToBytes,
       CancellationToken cancellationToken = default)
    {
+      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
       cancellationToken.ThrowIfCancellationRequested();
       
       var buffer = dataToBytes(byteMessage.Data);
@@ -116,6 +117,7 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
       Func<byte[], T> bytesToData,
       CancellationToken cancellationToken = default)
    {
+      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
       cancellationToken.ThrowIfCancellationRequested();
       
       FullMessage fullMessage = await ReceiveFullMessageAsync(cancellationToken);
@@ -130,11 +132,15 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
 
    public async Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default)
    {
+      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
+      
       await SendAsync(message, data => data, cancellationToken);
    }
    
    public async Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default)
    {
+      if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManager));
+      
       return await ReceiveAsync(data => data, cancellationToken);
    }
 
