@@ -1,26 +1,47 @@
-using simple_lan_file_transfer.Internals;
+using ReactiveUI;
+using simple_lan_file_transfer.Models;
 
 namespace simple_lan_file_transfer.ViewModels;
 
-public abstract class TransferViewModel<TManager, TFileAccess> : ViewModelBase
-    where TManager : TransferManagerBase<TFileAccess>
-    where TFileAccess : FileAccessManager
+public abstract class TransferViewModel : ViewModelBase
 {
-    protected TransferViewModel(TManager manager)
+    protected TransferViewModel(TransferManagerBase manager)
     {
-        Manager = manager;
+        TransferManager = manager;
+        manager.FileAccess!.PropertyChanged += OnFileAccessPropertyChanged;
     }
     
-    public TManager Manager { get; }
-    public double? Progress => Manager.FileAccess?.GetProgress();
+    public TransferManagerBase TransferManager { get; }
+
+    private double? _progress;
+    public double? Progress
+    {
+        get => _progress;
+        set => this.RaiseAndSetIfChanged(ref _progress, value);
+    }
+    
+    private void OnFileAccessPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(FileAccessManager.UsedBlockCounter))
+        {
+            OnProgressChanged();
+        }
+    }
+
+    private void OnProgressChanged()
+    {
+        Progress = TransferManager.FileAccess?.GetProgress();
+    }
 }
 
-public class IncomingTransferViewModel : TransferViewModel<ReceiverTransferManager, WriterFileAccessManager>
+public class IncomingTransferViewModel : TransferViewModel
 {
+    public new ReceiverTransferManager TransferManager => (ReceiverTransferManager)base.TransferManager;
     public IncomingTransferViewModel(ReceiverTransferManager manager) : base(manager) { }
 }
 
-public class OutgoingTransferViewModel : TransferViewModel<SenderTransferManager, ReaderFileAccessManager>
+public class OutgoingTransferViewModel : TransferViewModel
 {
+    public new SenderTransferManager TransferManager => (SenderTransferManager)base.TransferManager;
     public OutgoingTransferViewModel(SenderTransferManager manager) : base(manager) { }
 }
