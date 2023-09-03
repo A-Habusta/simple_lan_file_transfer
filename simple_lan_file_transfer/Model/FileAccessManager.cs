@@ -12,7 +12,7 @@ public abstract class FileAccessManager : IDisposable
     protected readonly FileStream? FileStream;
     private readonly HashAlgorithm _hashAlgorithm;
 
-    protected long UsedBlockCounter = -1;
+    protected long UsedBlockCounter = 0;
     public long FileBlocksCount { get; init; }
     
     protected FileAccessManager()
@@ -51,6 +51,13 @@ public abstract class FileAccessManager : IDisposable
         if (FileBlocksCount <= 0) return 0;
         
         return UsedBlockCounter / (double) FileBlocksCount;
+    }
+    
+    public virtual void IncrementBlockCounter()
+    {
+        if (Disposed) throw new ObjectDisposedException(nameof(FileAccessManager));
+        
+        ++UsedBlockCounter;
     }
 
     public void Dispose()
@@ -110,8 +117,12 @@ public sealed class WriterFileAccessManager : FileAccessManager
         if (FileStream is null) return;
         
         FileStream!.Write(block);
-        
-        WriteLastBlockWritten(++UsedBlockCounter);
+    }
+    
+    public override void IncrementBlockCounter()
+    {
+        base.IncrementBlockCounter();
+        WriteLastBlockWritten(UsedBlockCounter);
     }
 
     public void OpenMetadataFile(byte[] fileHash)
@@ -171,7 +182,7 @@ public sealed class WriterFileAccessManager : FileAccessManager
     {
         if (Disposed) throw new ObjectDisposedException(nameof(WriterFileAccessManager));
         
-        _metadataFileStream!.Seek(sizeof(long), SeekOrigin.Begin);
+        _metadataFileStream!.Seek(0, SeekOrigin.Begin);
         _metadataFileStream!.Write(BitConverter.GetBytes(block));
         _metadataFileStream!.Flush();
     }
@@ -240,7 +251,6 @@ public sealed class ReaderFileAccessManager : FileAccessManager
         
         if (read != blockSize) Array.Resize(ref block, read);
         
-        ++UsedBlockCounter;
         return block;
     }
 }

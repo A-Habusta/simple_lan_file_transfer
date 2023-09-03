@@ -39,6 +39,8 @@ public sealed class SenderTransferManager : TransferManagerBase
          var block = FileAccess.ReadNextBlock();
          await SendAsync(new Message<byte[]>{ Data = block, Type = MessageType.FileBlock}, cancellationToken);
          cancellationToken.ThrowIfCancellationRequested();
+         
+         FileAccess.IncrementBlockCounter();
 
          if (block.LongLength >= Utility.BlockSize) continue;
          
@@ -106,6 +108,7 @@ public class ReceiverTransferManager : TransferManagerBase
          if (message.Type == MessageType.EndOfTransfer) break;
          
          FileAccess?.WriteNextBlock(message.Data);
+         FileAccess?.IncrementBlockCounter();
       }
    }
    
