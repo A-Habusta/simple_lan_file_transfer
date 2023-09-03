@@ -1,30 +1,46 @@
 namespace simple_lan_file_transfer.Models;
 
-using System.Text;
 
-public enum NetworkMessageType
+
+public enum ByteMessageType
 {
    Metadata,
    Data,
    EndOfTransfer
 }
 
-public readonly struct NetworkMessage<T> 
+public readonly struct ByteMessage<T>
 {
    public T Data { get; init; }
-   public NetworkMessageType Type { get; init; }
+   public ByteMessageType Type { get; init; }
 }
 
-public sealed class NetworkTransferManager : IDisposable 
+public interface IByteTransferManager
+{
+   Task SendAsync<T>(
+      ByteMessage<T> byteMessage,
+      Func<T, byte[]> dataToBytes,
+      CancellationToken cancellationToken = default);
+   
+   Task<ByteMessage<T>> ReceiveAsync<T>(
+      Func<byte[], T> bytesToData,
+      CancellationToken cancellationToken = default);
+   
+   Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default);
+   
+   Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default);
+}
+
+public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
 {
    private readonly struct Header
    {
       public const int Size = sizeof(byte) + sizeof(long);
       
       private readonly byte _type;
-      public NetworkMessageType Type
+      public ByteMessageType Type
       {
-         get => (NetworkMessageType)_type;
+         get => (ByteMessageType)_type;
          init => _type = (byte)value;
       }
       
@@ -42,7 +58,7 @@ public sealed class NetworkTransferManager : IDisposable
       {
          return new Header
          {
-            Type = (NetworkMessageType)bytes[0],
+            Type = (ByteMessageType)bytes[0],
             DataSize = BitConverter.ToInt64(bytes.AsSpan(1, 8))
          };
       }
@@ -74,16 +90,16 @@ public sealed class NetworkTransferManager : IDisposable
    }
 
    public async Task SendAsync<T>(
-      NetworkMessage<T> networkMessage,
+      ByteMessage<T> byteMessage,
       Func<T, byte[]> dataToBytes,
       CancellationToken cancellationToken = default)
    {
       cancellationToken.ThrowIfCancellationRequested();
       
-      var buffer = dataToBytes(networkMessage.Data);
+      var buffer = dataToBytes(byteMessage.Data);
       var header = new Header
       {
-         Type = networkMessage.Type,
+         Type = byteMessage.Type,
          DataSize = buffer.Length
       };
 
@@ -96,7 +112,7 @@ public sealed class NetworkTransferManager : IDisposable
       await SendFullMessageAsync(fullMessage, cancellationToken);
    }
    
-   public async Task<NetworkMessage<T>> ReceiveAsync<T>(
+   public async Task<ByteMessage<T>> ReceiveAsync<T>(
       Func<byte[], T> bytesToData,
       CancellationToken cancellationToken = default)
    {
@@ -105,19 +121,19 @@ public sealed class NetworkTransferManager : IDisposable
       FullMessage fullMessage = await ReceiveFullMessageAsync(cancellationToken);
       cancellationToken.ThrowIfCancellationRequested();
 
-      return new NetworkMessage<T>
+      return new ByteMessage<T>
       {
          Data = bytesToData(fullMessage.Data),
          Type = fullMessage.Header.Type
       };
    }
 
-   public async Task SendAsync(NetworkMessage<byte[]> message, CancellationToken cancellationToken = default)
+   public async Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default)
    {
       await SendAsync(message, data => data, cancellationToken);
    }
    
-   public async Task<NetworkMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default)
+   public async Task<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default)
    {
       return await ReceiveAsync(data => data, cancellationToken);
    }
