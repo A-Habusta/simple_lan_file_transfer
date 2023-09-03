@@ -195,5 +195,4 @@ public sealed class NetworkTransferManager : IDisposable, IByteTransferManager
          Header = header
       };
    }
-
 }
