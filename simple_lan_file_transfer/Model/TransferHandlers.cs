@@ -111,7 +111,7 @@ public readonly struct ReceiverParameterCommunicationManager
             case { Type: ByteMessageType.Metadata }:
                 break;
             case { Type: ByteMessageType.EndOfTransfer }:
-                throw new TransferCancelledException("Transfer was cancelled by the sender.");
+                throw new RemoteTransferCancelledException("Transfer was cancelled by the sender.");
             case { Type: ByteMessageType.Data }:
                 goto default;
             default:
@@ -168,7 +168,7 @@ public readonly struct SenderParameterCommunicationManager
             case { Type: ByteMessageType.Metadata }:
                 return message.Data;
             case { Type: ByteMessageType.EndOfTransfer }:
-                throw new TransferCancelledException("Transfer was cancelled by the receiver.");
+                throw new RemoteTransferCancelledException("Transfer was cancelled by the receiver.");
             case { Type: ByteMessageType.Data }:
                 goto default;
             default:
@@ -180,4 +180,14 @@ public readonly struct SenderParameterCommunicationManager
 public class TransferCancelledException : Exception
 {
     public TransferCancelledException(string message) : base(message) { }
+}
+
+public class RemoteTransferCancelledException : Exception
+{
+    public RemoteTransferCancelledException(string message) : base(message) { }
+}
+
+public class LocalTransferCancelledException : Exception
+{
+    public LocalTransferCancelledException(string message) : base(message) { }
 }
