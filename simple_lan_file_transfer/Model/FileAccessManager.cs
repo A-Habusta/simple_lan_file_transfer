@@ -63,6 +63,10 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
 
         var block = new byte[Utility.BlockSize];
+
+        var read = _fileStream.Read(block);
+        Array.Resize(ref block, read);
+
         IncrementBlockCounter();
 
         return block;
