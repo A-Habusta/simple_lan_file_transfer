@@ -6,14 +6,14 @@ public readonly struct TransmitterTransferManager
 {
     private readonly IBlockSequentialReader _blockReader;
     private readonly IByteSenderAsync _byteSenderAsync;
-    
+
     public TransmitterTransferManager(IBlockSequentialReader blockReader, IByteSenderAsync byteSenderAsync)
     {
         _blockReader = blockReader;
         _byteSenderAsync = byteSenderAsync;
     }
 
-    public async ValueTask SendBytesAsync(CancellationToken cancellationToken = default)
+    public async Task SendBytesAsync(CancellationToken cancellationToken = default)
     {
         for (;;)
         {
@@ -25,7 +25,7 @@ public readonly struct TransmitterTransferManager
                 await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
                 return;
             }
-            
+
             await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Data = block, Type = ByteMessageType.Data }, cancellationToken);
         }
     }
@@ -35,20 +35,20 @@ public readonly struct ReceiverTransferManager
 {
     private readonly IBlockSequentialWriter _blockWriter;
     private readonly IByteReceiverAsync _byteReceiverAsync;
-    
+
     public ReceiverTransferManager(IBlockSequentialWriter blockWriter, IByteReceiverAsync byteReceiverAsync)
     {
         _blockWriter = blockWriter;
         _byteReceiverAsync = byteReceiverAsync;
     }
-    
-    public async ValueTask ReceiveBytesAsync(CancellationToken cancellationToken = default)
+
+    public async Task ReceiveBytesAsync(CancellationToken cancellationToken = default)
     {
         for (;;)
         {
             var message = await _byteReceiverAsync.ReceiveAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            
+
             switch (message.Type)
             {
                 case ByteMessageType.Data:
@@ -68,54 +68,54 @@ public readonly struct ReceiverTransferManager
 public readonly struct ByteTransferManagerInterfaceWrapper
 {
     private readonly IByteTransferManagerAsync _byteTransferManagerAsync;
-    
+
     public ByteTransferManagerInterfaceWrapper(IByteTransferManagerAsync byteTransferManagerAsync)
     {
         _byteTransferManagerAsync = byteTransferManagerAsync;
     }
-    
-    public ValueTask SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
+
+    public Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.SendAsync(message, cancellationToken);
 
-    public ValueTask<ByteMessage<byte[]>> ReceiveBytesAsync(CancellationToken cancellationToken = default) =>
+    public Task<ByteMessage<byte[]>> ReceiveBytesAsync(CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.ReceiveAsync(cancellationToken);
-    
-    public ValueTask SendAsync(ByteMessage<string> message, CancellationToken cancellationToken = default) =>
+
+    public Task SendAsync(ByteMessage<string> message, CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.SendAsync(message, Encoding.UTF8.GetBytes, cancellationToken);
 
-    public ValueTask<ByteMessage<string>> ReceiveStringAsync(CancellationToken cancellationToken = default) =>
+    public Task<ByteMessage<string>> ReceiveStringAsync(CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.ReceiveAsync(Encoding.UTF8.GetString, cancellationToken);
-    
-    public ValueTask SendAsync(ByteMessage<long> message, CancellationToken cancellationToken = default) =>
+
+    public Task SendAsync(ByteMessage<long> message, CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.SendAsync(message, BitConverter.GetBytes, cancellationToken);
-    
-    public ValueTask<ByteMessage<long>> ReceiveLongAsync(CancellationToken cancellationToken = default) =>
+
+    public Task<ByteMessage<long>> ReceiveLongAsync(CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.ReceiveAsync(bytes => BitConverter.ToInt64(bytes), cancellationToken);
 }
 
 public readonly struct ReceiverParameterCommunicationManager
 {
     private readonly ByteTransferManagerInterfaceWrapper _byteTransferManager;
-    
+
     public ReceiverParameterCommunicationManager(IByteTransferManagerAsync byteTransferManagerAsync)
     {
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
-    } 
-    
-    public async ValueTask<(string filename, byte[] fileHash)> ReceiveMetadataAsync(CancellationToken cancellationToken = default)
+    }
+
+    public async Task<(string filename, byte[] fileHash)> ReceiveMetadataAsync(CancellationToken cancellationToken = default)
     {
         var fileNameMessage = await _byteTransferManager.ReceiveStringAsync(cancellationToken);
         if (fileNameMessage.Type != ByteMessageType.Metadata)
             throw new IOException("Received unexpected message type.");
-        
+
         var fileHashMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
         if (fileHashMessage.Type != ByteMessageType.Metadata)
             throw new IOException("Received unexpected message type.");
-        
+
         return (fileNameMessage.Data, fileHashMessage.Data);
     }
-    
-    public async ValueTask SendLastWrittenBlockAsync(long block, CancellationToken cancellationToken = default)
+
+    public async Task SendLastWrittenBlockAsync(long block, CancellationToken cancellationToken = default)
     {
         await _byteTransferManager.SendAsync(new ByteMessage<long>
         {
@@ -128,31 +128,31 @@ public readonly struct ReceiverParameterCommunicationManager
 public readonly struct SenderParameterCommunicationManager
 {
     private readonly ByteTransferManagerInterfaceWrapper _byteTransferManager;
-    
+
     public SenderParameterCommunicationManager(IByteTransferManagerAsync byteTransferManagerAsync)
     {
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
-    
-    public async ValueTask SendMetadataAsync(string filename, byte[] fileHash, CancellationToken cancellationToken = default)
+
+    public async Task SendMetadataAsync(string filename, byte[] fileHash, CancellationToken cancellationToken = default)
     {
         await _byteTransferManager.SendAsync(new ByteMessage<string>
         {
             Data = filename,
             Type = ByteMessageType.Metadata
         }, cancellationToken);
-        
+
         await _byteTransferManager.SendAsync(new ByteMessage<byte[]>
         {
             Data = fileHash,
             Type = ByteMessageType.Metadata
         }, cancellationToken);
     }
-    
-    public async ValueTask<long> ReceiveLastWrittenBlock(CancellationToken cancellationToken = default)
+
+    public async Task<long> ReceiveLastWrittenBlock(CancellationToken cancellationToken = default)
     {
         var message = await _byteTransferManager.ReceiveLongAsync(cancellationToken);
-        
+
         if (message.Type != ByteMessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
