@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace simple_lan_file_transfer.Models;
 public sealed class MasterConnectionManager
 {
