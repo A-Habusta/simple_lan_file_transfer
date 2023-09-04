@@ -30,7 +30,10 @@ public sealed class MasterConnectionManager
     public static async Task<Socket> StartNewOutgoingTransferAsync(IPAddress ipAddress, int port,
         CancellationToken cancellationToken = default)
     {
+        IPEndPoint endPoint = new(IPAddress.Any, 0);
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(endPoint);
+
         await socket.ConnectAsync(ipAddress, port, cancellationToken);
 
         if (cancellationToken.IsCancellationRequested)
