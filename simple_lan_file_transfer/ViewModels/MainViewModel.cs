@@ -33,7 +33,7 @@ public class MainViewModel : ViewModelBase
             cancellationToken.ThrowIfCancellationRequested();
         }
         // TODO: Handle specific exceptions
-        catch (Exception ex)
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException)
         {
             await ShowPopup(ex.Message);
             return;
@@ -50,7 +50,8 @@ public class MainViewModel : ViewModelBase
             socket.Dispose();
             return;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is OperationCanceledException or RemoteTransferCancelledException or IOException
+                                      or SocketException)
         {
             await ShowPopup(ex.Message);
 
