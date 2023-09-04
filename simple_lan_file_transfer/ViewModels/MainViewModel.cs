@@ -7,20 +7,46 @@ namespace simple_lan_file_transfer.ViewModels;
 public class MainViewModel : ViewModelBase
 {
     public MasterConnectionManager ConnectionManager { get; } = new(Utility.DefaultPort);
-    public ObservableCollection<TabConnectionViewModel> TabConnections { get; } = new();
 
-    private string _specialMessage = string.Empty;
-    public string SpecialMessage
-    {
-        get => _specialMessage;
-        set => this.RaiseAndSetIfChanged(ref _specialMessage, value);
-    }
+    public string RootDirectory { get; set; } = Directory.GetCurrentDirectory();
+    private const string MetadataDirectory = ".transfers_in_progress";
 
-    private async Task ShowOperationCanceledPopup() => await ShowPopup("Operation cancelled.");
-    private async Task ShowPopup(string message)
+    private string MetadataPath => Path.Combine(RootDirectory, MetadataDirectory);
+
+    public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
+
+    public static async Task ShowOperationCancelledPopup() => await ShowPopup("Operation cancelled.");
+    private static async Task ShowPopup(string message)
     {
         var popup = MessageBoxManager.GetMessageBoxStandard("Notice", message);
         await popup.ShowAsync();
+    }
+
+    public async Task CreateNewIncomingTransferAsync(Socket socket, CancellationToken cancellationToken = default)
+    {
+        TransferViewModel viewModel;
+        try
+        {
+            viewModel = await TransferViewModel.TransferViewModelAsyncFactory.CreateIncomingTransferViewModelAsync(
+                socket, RootDirectory, MetadataPath, cancellationToken);
+        }
+        catch (LocalTransferCancelledException)
+        {
+            socket.Dispose();
+            return;
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or RemoteTransferCancelledException or IOException
+                                      or SocketException)
+        {
+            await ShowPopup(ex.Message);
+
+            socket.Dispose();
+            return;
+        }
+
+        IPAddress ipAddress = ((IPEndPoint)socket.RemoteEndPoint!).Address;
+
+        CreateTransferViewModelInCorrectTab(viewModel, ipAddress.ToString());
     }
 
     public async Task CreateNewOutgoingTransferAsync(string filePath, IPAddress ipAddress, int port,
