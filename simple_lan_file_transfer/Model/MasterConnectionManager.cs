@@ -1,8 +1,6 @@
 namespace simple_lan_file_transfer.Models;
 public sealed class MasterConnectionManager
 {
-    public string RootDirectory { get; set; } = Utility.DefaultRootDirectory;
-
     private readonly TcpListener _requestListener;
     public MasterConnectionManager(int port)
     {
