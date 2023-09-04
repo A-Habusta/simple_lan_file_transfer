@@ -1,5 +1,4 @@
 ﻿using MsBox.Avalonia;
-using ReactiveUI;
 using simple_lan_file_transfer.Models;
 
 namespace simple_lan_file_transfer.ViewModels;
@@ -58,7 +57,6 @@ public class MainViewModel : ViewModelBase
             socket = await MasterConnectionManager.StartNewOutgoingTransferAsync(ipAddress, port, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
         }
-        // TODO: Handle specific exceptions
         catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException)
         {
             await ShowPopup(ex.Message);
