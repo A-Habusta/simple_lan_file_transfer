@@ -1,4 +1,5 @@
-﻿using ReactiveUI;
+﻿using MsBox.Avalonia;
+using ReactiveUI;
 using simple_lan_file_transfer.Models;
 
 namespace simple_lan_file_transfer.ViewModels;
@@ -15,10 +16,11 @@ public class MainViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _specialMessage, value);
     }
 
-    public void ShowOperationCanceledPopup() => ShowPopup("Operation canceled.");
-    public void ShowPopup(string message)
+    private async Task ShowOperationCanceledPopup() => await ShowPopup("Operation cancelled.");
+    private async Task ShowPopup(string message)
     {
-        throw new NotImplementedException();
+        var popup = MessageBoxManager.GetMessageBoxStandard("Notice", message);
+        await popup.ShowAsync();
     }
 
     public async Task CreateNewOutgoingTransferAsync(string filePath, IPAddress ipAddress, int port,
@@ -33,7 +35,7 @@ public class MainViewModel : ViewModelBase
         // TODO: Handle specific exceptions
         catch (Exception ex)
         {
-            ShowPopup(ex.Message);
+            await ShowPopup(ex.Message);
             return;
         }
 
@@ -43,9 +45,15 @@ public class MainViewModel : ViewModelBase
             viewModel = await TransferViewModel.TransferViewModelAsyncFactory.CreateOutgoingTransferViewModelAsync(
                 socket, filePath, cancellationToken);
         }
+        catch (LocalTransferCancelledException)
+        {
+            socket.Dispose();
+            return;
+        }
         catch (Exception ex)
         {
-            ShowPopup(ex.Message);
+            await ShowPopup(ex.Message);
+
             socket.Dispose();
             return;
         }
