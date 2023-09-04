@@ -1,5 +1,4 @@
-﻿using System.Security.Cryptography;
-using ReactiveUI;
+﻿using ReactiveUI;
 using simple_lan_file_transfer.Models;
 
 namespace simple_lan_file_transfer.ViewModels;
