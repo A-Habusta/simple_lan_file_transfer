@@ -5,6 +5,13 @@ public sealed class MasterConnectionManager
     public MasterConnectionManager(int port)
     {
         _requestListener = new TcpListener(IPAddress.Any, port);
+
+        // This should not be done on Windows, reason here: https://stackoverflow.com/a/14388707
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _requestListener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        }
+
         _requestListener.Start();
     }
 
