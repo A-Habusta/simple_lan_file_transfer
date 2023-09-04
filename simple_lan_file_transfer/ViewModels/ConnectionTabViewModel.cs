@@ -1,12 +1,12 @@
 namespace simple_lan_file_transfer.ViewModels;
 
-public class TabConnectionViewModel
+public class ConnectionTabViewModel
 {
     public string TabName { get; }
     public ObservableCollection<TransferViewModel> OutgoingTransfers { get; } = new();
     public ObservableCollection<TransferViewModel> IncomingTransfers { get; } = new();
 
-    public TabConnectionViewModel(string tabName)
+    public ConnectionTabViewModel(string tabName)
     {
         TabName = tabName;
     }

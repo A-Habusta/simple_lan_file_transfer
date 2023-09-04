@@ -64,17 +64,17 @@ public class MainViewModel : ViewModelBase
     private void CreateTransferViewModelInCorrectTab(TransferViewModel transferViewModel, string destinationTabName) =>
         GetTabConnectionViewModel(destinationTabName).SaveTransferToCorrectCollection(transferViewModel);
 
-    private TabConnectionViewModel GetTabConnectionViewModel(string tabName)
+    private ConnectionTabViewModel GetTabConnectionViewModel(string tabName)
     {
-        TabConnectionViewModel result = TabConnections.FirstOrDefault(x => x.TabName == tabName) ??
+        ConnectionTabViewModel result = TabConnections.FirstOrDefault(x => x.TabName == tabName) ??
                                         CreateNewTabConnectionViewModel(tabName);
 
         return result;
     }
 
-    private TabConnectionViewModel CreateNewTabConnectionViewModel(string tabName)
+    private ConnectionTabViewModel CreateNewTabConnectionViewModel(string tabName)
     {
-        var result = new TabConnectionViewModel(tabName);
+        var result = new ConnectionTabViewModel(tabName);
         TabConnections.Add(result);
 
         return result;
