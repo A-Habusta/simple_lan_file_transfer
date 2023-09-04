@@ -20,18 +20,18 @@ public sealed class MasterConnectionManager
         return socket;
     }
 
-    public static async Task<Socket> StartNewOutgoingTransferAsync(IPAddress ipAddress, int port, 
+    public static async Task<Socket> StartNewOutgoingTransferAsync(IPAddress ipAddress, int port,
         CancellationToken cancellationToken = default)
     {
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         await socket.ConnectAsync(ipAddress, port, cancellationToken);
-        
+
         if (cancellationToken.IsCancellationRequested)
         {
             socket.Close();
             throw new OperationCanceledException();
         }
-        
+
         return socket;
     }
 }
