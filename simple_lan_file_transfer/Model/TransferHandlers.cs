@@ -105,8 +105,18 @@ public readonly struct ReceiverParameterCommunicationManager
     public async Task<(string filename, byte[] fileHash)> ReceiveMetadataAsync(CancellationToken cancellationToken = default)
     {
         var fileNameMessage = await _byteTransferManager.ReceiveStringAsync(cancellationToken);
-        if (fileNameMessage.Type != ByteMessageType.Metadata)
-            throw new IOException("Received unexpected message type.");
+
+        switch (fileNameMessage)
+        {
+            case { Type: ByteMessageType.Metadata }:
+                break;
+            case { Type: ByteMessageType.EndOfTransfer }:
+                throw new TransferCancelledException("Transfer was cancelled by the sender.");
+            case { Type: ByteMessageType.Data }:
+                goto default;
+            default:
+                throw new IOException("Received unexpected message type.");
+        }
 
         var fileHashMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
         if (fileHashMessage.Type != ByteMessageType.Metadata)
@@ -153,9 +163,21 @@ public readonly struct SenderParameterCommunicationManager
     {
         var message = await _byteTransferManager.ReceiveLongAsync(cancellationToken);
 
-        if (message.Type != ByteMessageType.Metadata)
-            throw new IOException("Received unexpected message type.");
-
-        return message.Data;
+        switch (message)
+        {
+            case { Type: ByteMessageType.Metadata }:
+                return message.Data;
+            case { Type: ByteMessageType.EndOfTransfer }:
+                throw new TransferCancelledException("Transfer was cancelled by the receiver.");
+            case { Type: ByteMessageType.Data }:
+                goto default;
+            default:
+                throw new IOException("Received unexpected message type.");
+        }
     }
+}
+
+public class TransferCancelledException : Exception
+{
+    public TransferCancelledException(string message) : base(message) { }
 }
