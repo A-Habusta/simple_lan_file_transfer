@@ -1,4 +1,3 @@
-using System.Text;
 using MsBox.Avalonia;
 using MsBox.Avalonia.Enums;
 using System.Security.Cryptography;
