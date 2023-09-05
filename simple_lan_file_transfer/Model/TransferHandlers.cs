@@ -13,9 +13,9 @@ public readonly struct TransmitterTransferManager
         _byteSenderAsync = byteSenderAsync;
     }
 
-    public async Task SendBytesAsync(CancellationToken cancellationToken = default)
+    public async Task SendBytesAsync(CancellationToken cancellationToken = default, CancellationToken pauseToken = default)
     {
-        for (;;)
+        while(!pauseToken.IsCancellationRequested)
         {
             var block = _blockReader.ReadNextBlock();
             cancellationToken.ThrowIfCancellationRequested();
@@ -42,9 +42,9 @@ public readonly struct ReceiverTransferManager
         _byteReceiverAsync = byteReceiverAsync;
     }
 
-    public async Task ReceiveBytesAsync(CancellationToken cancellationToken = default)
+    public async Task ReceiveBytesAsync(CancellationToken cancellationToken = default, CancellationToken pauseToken = default)
     {
-        for (;;)
+        while (!pauseToken.IsCancellationRequested)
         {
             var message = await _byteReceiverAsync.ReceiveAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
