@@ -17,7 +17,7 @@ public interface IBlockSequentialWriter
 public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSequentialWriter, INotifyPropertyChanged, IDisposable
 {
     private bool _disposed;
-    private readonly FileStream _fileStream;
+    private readonly Stream _fileStream;
     private readonly MetadataHandler? _metadataHandler;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -41,7 +41,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 
     public long FileBlocksCount { get; }
 
-    public FileBlockAccessManager(FileStream fileStream, MetadataHandler? metadataHandler = default)
+    public FileBlockAccessManager(Stream fileStream, MetadataHandler? metadataHandler = default)
     {
         _fileStream = fileStream;
         FileBlocksCount = CalculateFileBlockCount(_fileStream.Length);
