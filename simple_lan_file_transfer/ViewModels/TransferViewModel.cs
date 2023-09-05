@@ -6,7 +6,7 @@ using simple_lan_file_transfer.Models;
 
 namespace simple_lan_file_transfer.ViewModels;
 
-public partial class TransferViewModel
+public partial class TransferViewModel : ViewModelBase
 {
     public delegate void SelfRemover(TransferViewModel transferViewModel);
 
