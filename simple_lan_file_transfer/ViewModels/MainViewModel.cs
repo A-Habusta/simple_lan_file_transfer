@@ -9,17 +9,17 @@ namespace simple_lan_file_transfer.ViewModels;
 public class MainViewModel : ViewModelBase
 {
     public MasterConnectionManager ConnectionManager { get; } = new(Utility.DefaultPort);
-    private StorageProviderWrapper? _fileProviderServiceWrapper = null;
+    private StorageProviderWrapper? _storageProviderWrapper;
 
     public void GetAndStoreStorageProviderService()
     {
-        if (_fileProviderServiceWrapper is not null) return;
+        if (_storageProviderWrapper is not null) return;
 
         var storageProviderService = App.Services?.GetRequiredService<IExposeStorageProviderService>();
         if (storageProviderService is null)
             throw new InvalidOperationException("Storage provider service is null.");
 
-        _fileProviderServiceWrapper = new StorageProviderWrapper(storageProviderService.StorageProvider);
+        _storageProviderWrapper = new StorageProviderWrapper(storageProviderService.StorageProvider);
     }
 
     public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
@@ -33,7 +33,7 @@ public class MainViewModel : ViewModelBase
 
     public async Task CreateNewIncomingTransferAsync(Socket socket, CancellationToken cancellationToken = default)
     {
-        IStorageFolder receiveRootFolder = await _fileProviderServiceWrapper.GetBookmarkedFolderAsync();
+        IStorageFolder receiveRootFolder = await _storageProviderWrapper!.GetBookmarkedFolderAsync();
         using var receiveRootFolderWrapper = new StorageFolderWrapper(receiveRootFolder);
 
         TransferViewModel viewModel;
