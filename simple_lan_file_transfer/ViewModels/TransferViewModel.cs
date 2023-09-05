@@ -1,3 +1,5 @@
+using ReactiveUI;
+using Avalonia.Media;
 using MsBox.Avalonia;
 using MsBox.Avalonia.Enums;
 using Avalonia.Platform.Storage;
@@ -8,43 +10,174 @@ namespace simple_lan_file_transfer.ViewModels;
 
 public partial class TransferViewModel : ViewModelBase
 {
+    private static readonly IBrush ProgressBarColorRunning = Brushes.CornflowerBlue;
+    private static readonly IBrush ProgressBarColorPaused = Brushes.Gray;
+
     public delegate void SelfRemover(TransferViewModel transferViewModel);
 
     private readonly FileBlockAccessManager _fileAccessManager;
-    private readonly NetworkTransferManagerAsync _transferManager;
+    private readonly NetworkTransferManagerAsync _networkTransferManager;
 
     private readonly IStorageFile _transferFile;
     private readonly IStorageFile? _metadataFile;
 
+    private CancellationTokenSource? _pauseTokenSource;
+
     private SelfRemover? _selfRemover;
     public TransferDirection Direction { get; }
 
+    #region Bound Properties
+    public string Name => _transferFile.Name;
+
+    public double FileSizeWithSuffix { get; }
+
+    private bool _isPaused;
+    public bool IsPaused
+    {
+        get => _isPaused;
+        set => this.RaiseAndSetIfChanged(ref _isPaused, value);
+    }
+
+    private double _progress;
+    public double Progress
+    {
+        get => _progress;
+        set => this.RaiseAndSetIfChanged(ref _progress, value);
+    }
+
+    private IBrush _progressBarColor = ProgressBarColorRunning;
+    public IBrush ProgressBarColor
+    {
+        get => _progressBarColor;
+        set => this.RaiseAndSetIfChanged(ref _progressBarColor, value);
+    }
+
+    private readonly Utility.ByteSuffix _byteSuffix;
+    private readonly string _defaultFormatString;
+    private string _progressFormatString;
+    public string ProgressFormatString
+    {
+        get => _progressFormatString;
+        set => this.RaiseAndSetIfChanged(ref _progressFormatString, value);
+    }
+
+    #endregion
+
     public void RegisterSelfRemover(SelfRemover selfRemoverDelegate) => _selfRemover = selfRemoverDelegate;
+
+    public void TerminateTransfer()
+    {
+        RemoveTransferFromTab();
+    }
+
+    public void PauseTransfer()
+    {
+        _pauseTokenSource?.Cancel();
+        SetUserInterfaceElementsToPauseMode();
+    }
 
     public void RemoveTransferFromTab()
     {
         _selfRemover?.Invoke(this);
         _fileAccessManager.Dispose();
-        _transferManager.Dispose();
+        _networkTransferManager.Dispose();
 
         _transferFile.Dispose();
         _metadataFile?.Dispose();
+
+        _pauseTokenSource?.Dispose();
     }
 
-    public async Task RemoveMetadataFileAsync()
+    public async Task StartTransferAsync()
+    {
+        _pauseTokenSource = new CancellationTokenSource();
+        CancellationToken pauseToken = _pauseTokenSource.Token;
+
+        ResetUserInterfaceElements();
+
+        try
+        {
+            if (Direction == TransferDirection.Outgoing)
+            {
+                var transmitter = new TransmitterTransferManager(_fileAccessManager, _networkTransferManager);
+                await transmitter.SendBytesAsync(pauseToken: pauseToken);
+            }
+            else
+            {
+                var receiver = new ReceiverTransferManager(_fileAccessManager, _networkTransferManager);
+                await receiver.ReceiveBytesAsync(pauseToken: pauseToken);
+            }
+        }
+        // TODO: Exception handling
+        catch (OperationCanceledException)
+        { }
+
+        await OnTransferFinishAsync();
+    }
+
+    private async Task OnTransferFinishAsync()
+    {
+        await RemoveMetadataFileAsync();
+        RemoveTransferFromTab();
+    }
+
+    private async Task RemoveMetadataFileAsync()
     {
         if (_metadataFile is null) return;
         await _metadataFile!.DeleteAsync();
     }
 
-    private TransferViewModel(FileBlockAccessManager fileAccessManager, NetworkTransferManagerAsync transferManager,
+    private TransferViewModel(FileBlockAccessManager fileAccessManager, NetworkTransferManagerAsync networkTransferManager,
         TransferDirection direction, IStorageFile transferFile, IStorageFile? metadataFile = null)
     {
         _fileAccessManager = fileAccessManager;
-        _transferManager = transferManager;
+        _networkTransferManager = networkTransferManager;
         Direction = direction;
         _transferFile = transferFile;
         _metadataFile = metadataFile;
+
+        _fileAccessManager.PropertyChanged += OnProgressChanged;
+
+        _byteSuffix = Utility.GetHighestPossibleByteSuffixForNumber(_fileAccessManager.FileSize);
+        FileSizeWithSuffix = Utility.DivideNumberToFitSuffix(_fileAccessManager.FileSize, _byteSuffix);
+
+        _defaultFormatString =
+            $"{{0}} {_byteSuffix} / {FileSizeWithSuffix} {_byteSuffix}";
+
+        _progressFormatString = _defaultFormatString;
+    }
+
+    private void OnProgressChanged(object? sender, EventArgs e)
+    {
+        var args = e as PropertyChangedEventArgs;
+        if (args?.PropertyName != nameof(_fileAccessManager.LastProcessedBlock)) return;
+
+        Progress = CalculateProgress();
+    }
+
+    private double CalculateProgress()
+    {
+        var progress = _fileAccessManager.LastProcessedBlock * Utility.BlockSize;
+        return Utility.DivideNumberToFitSuffix(progress, _byteSuffix);
+    }
+
+    private void ResetUserInterfaceElements()
+    {
+        IsPaused = false;
+        ProgressBarColor = ProgressBarColorRunning;
+        ProgressFormatString = _defaultFormatString;
+    }
+
+    private void SetUserInterfaceElementsToPauseMode()
+    {
+        IsPaused = true;
+        ProgressBarColor = ProgressBarColorPaused;
+        AddPauseToProgressText();
+    }
+
+    private void AddPauseToProgressText()
+    {
+        ProgressFormatString = $"{_defaultFormatString} (Paused)";
     }
 }
 
