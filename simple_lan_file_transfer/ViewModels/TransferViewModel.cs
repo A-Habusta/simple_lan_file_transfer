@@ -1,5 +1,6 @@
 using MsBox.Avalonia;
 using MsBox.Avalonia.Enums;
+using Avalonia.Platform.Storage;
 using System.Security.Cryptography;
 using simple_lan_file_transfer.Models;
 
@@ -11,6 +12,10 @@ public partial class TransferViewModel
 
     private readonly FileBlockAccessManager _fileAccessManager;
     private readonly NetworkTransferManagerAsync _transferManager;
+
+    private readonly IStorageFile _transferFile;
+    private readonly IStorageFile? _metadataFile;
+
     private SelfRemover? _selfRemover;
     public TransferDirection Direction { get; }
 
@@ -21,14 +26,25 @@ public partial class TransferViewModel
         _selfRemover?.Invoke(this);
         _fileAccessManager.Dispose();
         _transferManager.Dispose();
+
+        _transferFile.Dispose();
+        _metadataFile?.Dispose();
+    }
+
+    public async Task RemoveMetadataFileAsync()
+    {
+        if (_metadataFile is null) return;
+        await _metadataFile!.DeleteAsync();
     }
 
     private TransferViewModel(FileBlockAccessManager fileAccessManager, NetworkTransferManagerAsync transferManager,
-        TransferDirection direction)
+        TransferDirection direction, IStorageFile transferFile, IStorageFile? metadataFile = null)
     {
         _fileAccessManager = fileAccessManager;
         _transferManager = transferManager;
         Direction = direction;
+        _transferFile = transferFile;
+        _metadataFile = metadataFile;
     }
 }
 
@@ -42,16 +58,16 @@ public partial class TransferViewModel
 
     public static class TransferViewModelAsyncFactory
     {
-        public static async Task<TransferViewModel> CreateOutgoingTransferViewModelAsync(Socket socket, string filePath,
-            CancellationToken cancellationToken = default)
+        public static async Task<TransferViewModel> CreateOutgoingTransferViewModelAsync(Socket socket,
+            IStorageFile file, CancellationToken cancellationToken = default)
         {
-            FileStream fileStream = new (filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            Stream fileStream = await file.OpenReadAsync();
 
             FileBlockAccessManager fileAccessManager = new (fileStream);
             NetworkTransferManagerAsync networkTransferManager = new (socket);
             SenderParameterCommunicationManager parameterCommunicationManager = new (networkTransferManager);
 
-            var fileName = Path.GetFileName(filePath);
+            var fileName = file.Name;
 
             // We are using MD5 because it is not used for security purposes, but rather for file integrity.
             using HashAlgorithm hashAlgorithm = MD5.Create();
@@ -74,29 +90,39 @@ public partial class TransferViewModel
 
             fileAccessManager.SeekToBlock(lastWrittenBlock);
 
-            return new TransferViewModel(fileAccessManager, networkTransferManager, TransferDirection.Outgoing);
+            return new TransferViewModel(
+                fileAccessManager,
+                networkTransferManager,
+                TransferDirection.Outgoing,
+                file);
         }
 
         public static async Task<TransferViewModel> CreateIncomingTransferViewModelAsync(Socket socket,
-            string receiveDirectoryPath, string metadataDirectoryPath, CancellationToken cancellationToken = default)
+            StorageFolderWrapper rootFolder, string metadataFolderName, CancellationToken cancellationToken = default)
         {
             NetworkTransferManagerAsync networkTransferManager = new (socket);
             ReceiverParameterCommunicationManager parameterCommunicationManager = new (networkTransferManager);
 
-            var (fileName, hash) = await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
+            var (receivedFileName, hash) = await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
+            var metadataFileName = BitConverter.ToString(hash);
 
-            var metadataFile = BitConverter.ToString(hash);
+            FileCarrier result = await GetCorrectMetadataAndDataFileAsync(rootFolder, metadataFolderName,
+                receivedFileName, metadataFileName);
 
-            (MetadataHandler metadataHandler, var actualFilePath) = await GetCorrectMetadataAndDataFileAsync(
-                receiveDirectoryPath, metadataDirectoryPath, fileName, metadataFile);
+            (MetadataHandler metadataHandler, IStorageFile metadataFile, IStorageFile file) = result;
 
-            FileStream fileStream = new (actualFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+            Stream fileStream = await file.OpenWriteAsync();
 
             var fileAccessManager = new FileBlockAccessManager(fileStream, metadataHandler);
             var lastWrittenBlock = metadataHandler.ReadFileLastWrittenBlock();
             fileAccessManager.SeekToBlock(lastWrittenBlock);
 
-            return new TransferViewModel(fileAccessManager, networkTransferManager, TransferDirection.Incoming);
+            return new TransferViewModel(
+                fileAccessManager,
+                networkTransferManager,
+                TransferDirection.Incoming,
+                file,
+                metadataFile);
         }
 
         private static async Task<ButtonResult> ShowFileConflictMessageBoxAsync(string fileName)
@@ -113,41 +139,54 @@ public partial class TransferViewModel
             return await messageBoxManager.ShowAsync();
         }
 
-        private static async Task<(MetadataHandler metadataHandler, string actualFilePath)> GetCorrectMetadataAndDataFileAsync(
-            string rootDirectoryPath, string metadataDirectoryPath, string receivedFileName, string metadataFileName)
+        private static async Task<FileCarrier> GetCorrectMetadataAndDataFileAsync(
+            StorageFolderWrapper rootFolder, string metadataFolderName, string receivedFileName, string metadataFileName)
         {
-            var metadataFilePath = Path.Combine(metadataDirectoryPath, metadataFileName);
-            var receivedFileNamePath = Path.Combine(receivedFileName, rootDirectoryPath);
+            StorageFolderWrapper metadataFolderProvider = await rootFolder.GetOrCreateSubFolderAsync(metadataFolderName);
 
+            FileExistsResults metadataFileExistsResult = await metadataFolderProvider.FileExistsAsync(metadataFileName, saveItemIfFound: true);
+            FileExistsResults receivedFileNameExistsResult = await rootFolder.FileExistsAsync(receivedFileName);
 
-            var metadataFileExists = File.Exists(metadataFilePath);
-            var receivedFileNameExists = File.Exists(receivedFileNamePath);
+            MetadataHandler metadataHandler;
+            IStorageFile? metadataFile;
 
-            MetadataHandler metadataHandler = MetadataHandler.MetadataHandlerFactory.CreateMetadataHandler(metadataFilePath);
-
-            if (metadataFileExists)
+            if (metadataFileExistsResult.Exists)
             {
-                var savedFileName = metadataHandler.ReadFileName();
-                var savedFilePath = Path.Combine(savedFileName, rootDirectoryPath);
-                var savedFileExists = File.Exists(savedFilePath);
+                metadataFile = metadataFileExistsResult.Item! as IStorageFile;
+                metadataHandler = new MetadataHandler(await metadataFile!.OpenWriteAsync());
 
-                if (savedFileExists)
+                var savedFileName = metadataHandler.ReadFileName();
+                FileExistsResults savedFileExistsResult = await rootFolder.FileExistsAsync(savedFileName, saveItemIfFound: true);
+
+                if (savedFileExistsResult.Exists)
                 {
-                    return (metadataHandler, savedFilePath);
+                    var fileProvider = savedFileExistsResult.Item! as IStorageFile;
+                    return new FileCarrier
+                    {
+                        MetadataHandler = metadataHandler,
+                        MetadataFile = metadataFile,
+                        File = fileProvider!
+                    };
                 }
 
                 metadataHandler.WriteLastBlockProcessed(0);
             }
+            else
+            {
+                metadataFile = await metadataFolderProvider.CreateFileAsync(metadataFileName);
+                metadataHandler = new MetadataHandler(await metadataFile.OpenWriteAsync());
+            }
 
-            if (receivedFileNameExists)
+            if (receivedFileNameExistsResult.Exists)
             {
                 ButtonResult overwriteChoiceResults = await ShowFileConflictMessageBoxAsync(receivedFileName);
                 switch (overwriteChoiceResults)
                 {
                     case ButtonResult.Yes:
+                        await rootFolder.DeleteFileAsync(receivedFileName);
                         break;
                     case ButtonResult.No:
-                        receivedFileName = GetUniqueFileName(receivedFileNamePath);
+                        receivedFileName = await GetUniqueFileNameAsync(rootFolder, receivedFileName);
                         break;
                     case ButtonResult.Abort:
                         throw new LocalTransferCancelledException("Transfer was cancelled by user");
@@ -159,28 +198,56 @@ public partial class TransferViewModel
                 }
             }
 
+            IStorageFile file = await rootFolder.CreateFileAsync(receivedFileName);
             metadataHandler.WriteFileName(receivedFileName);
-            return (metadataHandler, receivedFileNamePath);
+            return new FileCarrier
+            {
+                MetadataHandler = metadataHandler,
+                MetadataFile = metadataFile,
+                File = file,
+            };
         }
 
-        private static string GetUniqueFileName(string filePath)
+        private static async Task<string> GetUniqueFileNameAsync(StorageFolderWrapper folder, string fileName)
         {
-            var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
-            var extension = Path.GetExtension(filePath);
-            var directory = Path.GetDirectoryName(filePath) ?? string.Empty;
+            const int batchSize = 5;
 
-            var counter = 1;
-            string fullFileName;
+            var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+            var extension = Path.GetExtension(fileName);
 
-            do
+
+            // Testing in batches to not waste FileExistsAsync calls
+            List<string> filenamesToTest = new(batchSize);
+            var start = 1;
+            for (;;)
             {
-                fullFileName = fileNameWithoutExtension + $" ({counter})" + extension;
-                filePath = Path.Combine(directory, fullFileName);
-                counter++;
-            }
-            while (File.Exists(filePath));
+                for (var i = start; i < batchSize + start; ++i)
+                {
+                    filenamesToTest.Add(fileNameWithoutExtension + $" ({i})" + extension);
+                }
 
-            return fullFileName;
+                var results = await folder.FilesExistAsync(filenamesToTest);
+                FileExistsResults? available = results.FirstOrDefault(x => !x.Exists);
+
+                if (available is not null) return available.Value.FileName;
+
+                start += batchSize;
+            }
+        }
+
+        private readonly struct FileCarrier
+        {
+
+            public void Deconstruct(out MetadataHandler metadataHandler, out IStorageFile metadataFile, out IStorageFile file)
+            {
+                metadataHandler = MetadataHandler;
+                metadataFile = MetadataFile;
+                file = File;
+            }
+
+            public MetadataHandler MetadataHandler { get; init; }
+            public IStorageFile MetadataFile { get; init; }
+            public IStorageFile File { get; init; }
         }
     }
 }
