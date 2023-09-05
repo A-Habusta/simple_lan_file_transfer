@@ -114,34 +114,10 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 
 public sealed class MetadataHandler : IDisposable
 {
-    public static class MetadataHandlerFactory
-    {
-        public static MetadataHandler CreateMetadataHandler(string metadataFilePath)
-        {
-            FileStream metadataFileStream = OpenMetadataFile(metadataFilePath);
-            MetadataHandler metadataHandler = new(metadataFileStream);
-            return metadataHandler;
-        }
-        private static FileStream OpenMetadataFile(string filePath)
-        {
-            return !File.Exists(filePath) ? CreateNewMetadataFile(filePath) : OpenExistingMetadataFile(filePath);
-        }
-
-        private static FileStream CreateNewMetadataFile(string metadataFilePath)
-        {
-            return File.Create(metadataFilePath);
-        }
-
-        private static FileStream OpenExistingMetadataFile(string metadataFilePath)
-        {
-            return File.Open(metadataFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        }
-    }
-
     private bool _disposed;
     private readonly FileStream _metadataFileStream;
 
-    private MetadataHandler(FileStream metadataFile)
+    public MetadataHandler(FileStream metadataFile)
     {
         _metadataFileStream = metadataFile;
 
