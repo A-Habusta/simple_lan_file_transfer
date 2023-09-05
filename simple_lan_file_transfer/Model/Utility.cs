@@ -10,6 +10,5 @@ internal static class Utility
 
     public const int BroadcastIntervalMs = 2000;
 
-    public const string DefaultRootDirectory = "ReceivedFiles";
-    public const string DefaultMetadataDirectory = "Metadata";
+    public const string DefaultMetadataDirectory = ".transfers_in_progress";
 }
