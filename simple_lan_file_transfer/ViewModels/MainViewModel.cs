@@ -1,16 +1,26 @@
 ﻿using MsBox.Avalonia;
+using Avalonia.Platform.Storage;
 using simple_lan_file_transfer.Models;
+using simple_lan_file_transfer.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace simple_lan_file_transfer.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
     public MasterConnectionManager ConnectionManager { get; } = new(Utility.DefaultPort);
+    private StorageProviderWrapper? _fileProviderServiceWrapper = null;
 
-    public string RootDirectory { get; set; } = Directory.GetCurrentDirectory();
-    private const string MetadataDirectory = ".transfers_in_progress";
+    public void GetAndStoreStorageProviderService()
+    {
+        if (_fileProviderServiceWrapper is not null) return;
 
-    private string MetadataPath => Path.Combine(RootDirectory, MetadataDirectory);
+        var storageProviderService = App.Services?.GetRequiredService<IExposeStorageProviderService>();
+        if (storageProviderService is null)
+            throw new InvalidOperationException("Storage provider service is null.");
+
+        _fileProviderServiceWrapper = new StorageProviderWrapper(storageProviderService.StorageProvider);
+    }
 
     public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
 
@@ -23,11 +33,14 @@ public class MainViewModel : ViewModelBase
 
     public async Task CreateNewIncomingTransferAsync(Socket socket, CancellationToken cancellationToken = default)
     {
+        IStorageFolder receiveRootFolder = await _fileProviderServiceWrapper.GetBookmarkedFolderAsync();
+        using var receiveRootFolderWrapper = new StorageFolderWrapper(receiveRootFolder);
+
         TransferViewModel viewModel;
         try
         {
             viewModel = await TransferViewModel.TransferViewModelAsyncFactory.CreateIncomingTransferViewModelAsync(
-                socket, RootDirectory, MetadataPath, cancellationToken);
+                socket, receiveRootFolderWrapper, Utility.DefaultMetadataDirectory, cancellationToken);
         }
         catch (LocalTransferCancelledException)
         {
@@ -48,7 +61,7 @@ public class MainViewModel : ViewModelBase
         CreateTransferViewModelInCorrectTab(viewModel, ipAddress.ToString());
     }
 
-    public async Task CreateNewOutgoingTransferAsync(string filePath, IPAddress ipAddress, int port,
+    public async Task CreateNewOutgoingTransferAsync(IStorageFile file, IPAddress ipAddress, int port,
         CancellationToken cancellationToken = default)
     {
         Socket socket;
@@ -67,7 +80,7 @@ public class MainViewModel : ViewModelBase
         try
         {
             viewModel = await TransferViewModel.TransferViewModelAsyncFactory.CreateOutgoingTransferViewModelAsync(
-                socket, filePath, cancellationToken);
+                socket, file, cancellationToken);
         }
         catch (LocalTransferCancelledException)
         {
