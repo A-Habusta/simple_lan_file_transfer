@@ -43,6 +43,8 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 
     public FileBlockAccessManager(Stream fileStream, MetadataHandler? metadataHandler = default)
     {
+        if (!fileStream.CanSeek)
+            throw new ArgumentException("Stream must support seek", nameof(fileStream));
         _fileStream = fileStream;
         FileBlocksCount = CalculateFileBlockCount(_fileStream.Length);
 
@@ -115,10 +117,12 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 public sealed class MetadataHandler : IDisposable
 {
     private bool _disposed;
-    private readonly FileStream _metadataFileStream;
+    private readonly Stream _metadataFileStream;
 
-    public MetadataHandler(FileStream metadataFile)
+    public MetadataHandler(Stream metadataFile)
     {
+        if (metadataFile.CanRead == false || metadataFile.CanWrite == false || metadataFile.CanSeek == false)
+            throw new ArgumentException("Stream must support read, write and seek", nameof(metadataFile));
         _metadataFileStream = metadataFile;
 
         WriteLastBlockProcessed(0);
@@ -172,14 +176,6 @@ public sealed class MetadataHandler : IDisposable
         _metadataFileStream.Seek(sizeof(long), SeekOrigin.Begin);
         _metadataFileStream.Write(Encoding.UTF8.GetBytes(fileName));
         _metadataFileStream.Flush();
-    }
-
-    public void DeleteMetadataFile()
-    {
-        var metadataFilePath = _metadataFileStream.Name;
-
-        _metadataFileStream.Close();
-        File.Delete(metadataFilePath);
     }
 
     public void Dispose()
