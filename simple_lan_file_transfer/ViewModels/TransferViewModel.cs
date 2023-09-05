@@ -48,6 +48,7 @@ public partial class TransferViewModel : ViewModelBase
     }
 }
 
+#region TransferViewModelFactory
 public partial class TransferViewModel
 {
     public enum TransferDirection
@@ -63,7 +64,12 @@ public partial class TransferViewModel
         {
             Stream fileStream = await file.OpenReadAsync();
 
-            FileBlockAccessManager fileAccessManager = new (fileStream);
+            var fileSize = (await file.GetBasicPropertiesAsync()).Size
+                           ?? throw new IOException("File size is inaccessible");
+
+            var fileSizeSigned = (long)fileSize;
+
+            FileBlockAccessManager fileAccessManager = new (fileStream, fileSizeSigned);
             NetworkTransferManagerAsync networkTransferManager = new (socket);
             SenderParameterCommunicationManager parameterCommunicationManager = new (networkTransferManager);
 
@@ -78,7 +84,7 @@ public partial class TransferViewModel
             long lastWrittenBlock;
             try
             {
-                await parameterCommunicationManager.SendMetadataAsync(fileName, hash, cancellationToken);
+                await parameterCommunicationManager.SendMetadataAsync(fileName, hash, fileSizeSigned, cancellationToken);
                 lastWrittenBlock = await parameterCommunicationManager.ReceiveLastWrittenBlock(cancellationToken);
             }
             catch (Exception)
@@ -103,7 +109,7 @@ public partial class TransferViewModel
             NetworkTransferManagerAsync networkTransferManager = new (socket);
             ReceiverParameterCommunicationManager parameterCommunicationManager = new (networkTransferManager);
 
-            var (receivedFileName, hash) = await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
+            var (receivedFileName, hash, fileSize) = await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
             var metadataFileName = BitConverter.ToString(hash);
 
             FileCarrier result = await GetCorrectMetadataAndDataFileAsync(rootFolder, metadataFolderName,
@@ -113,7 +119,7 @@ public partial class TransferViewModel
 
             Stream fileStream = await file.OpenWriteAsync();
 
-            var fileAccessManager = new FileBlockAccessManager(fileStream, metadataHandler);
+            var fileAccessManager = new FileBlockAccessManager(fileStream, fileSize, metadataHandler);
             var lastWrittenBlock = metadataHandler.ReadFileLastWrittenBlock();
             fileAccessManager.SeekToBlock(lastWrittenBlock);
 
@@ -251,3 +257,4 @@ public partial class TransferViewModel
         }
     }
 }
+#endregion

@@ -39,14 +39,15 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
         private set => SetProperty(ref _lastProcessedBlock, value);
     }
 
-    public long FileBlocksCount { get; }
+    public long FileSize { get; init; }
 
-    public FileBlockAccessManager(Stream fileStream, MetadataHandler? metadataHandler = default)
+    public FileBlockAccessManager(Stream fileStream, long fileSize, MetadataHandler? metadataHandler = default)
     {
         if (!fileStream.CanSeek)
             throw new ArgumentException("Stream must support seek", nameof(fileStream));
+
         _fileStream = fileStream;
-        FileBlocksCount = CalculateFileBlockCount(_fileStream.Length);
+        FileSize = fileSize;
 
         _metadataHandler = metadataHandler;
     }
@@ -106,11 +107,6 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 
         _metadataHandler.WriteLastBlockProcessed(LastProcessedBlock);
         IncrementBlockCounter();
-    }
-
-    private static long CalculateFileBlockCount(long fileSize)
-    {
-        return (long) Math.Ceiling(fileSize / (double) Utility.BlockSize);
     }
 }
 

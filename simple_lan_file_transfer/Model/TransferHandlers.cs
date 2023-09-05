@@ -20,13 +20,13 @@ public readonly struct TransmitterTransferManager
             var block = _blockReader.ReadNextBlock();
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (block.LongLength < Utility.BlockSize)
-            {
-                await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
-                return;
-            }
 
             await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Data = block, Type = ByteMessageType.Data }, cancellationToken);
+
+            if (block.LongLength == Utility.BlockSize) continue;
+
+            await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
+            return;
         }
     }
 }
@@ -102,7 +102,8 @@ public readonly struct ReceiverParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
-    public async Task<(string filename, byte[] fileHash)> ReceiveMetadataAsync(CancellationToken cancellationToken = default)
+    public async Task<(string filename, byte[] fileHash, long fileSize)> ReceiveMetadataAsync(
+        CancellationToken cancellationToken = default)
     {
         var fileNameMessage = await _byteTransferManager.ReceiveStringAsync(cancellationToken);
 
@@ -122,7 +123,11 @@ public readonly struct ReceiverParameterCommunicationManager
         if (fileHashMessage.Type != ByteMessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
-        return (fileNameMessage.Data, fileHashMessage.Data);
+        var fileSizeMessage = await _byteTransferManager.ReceiveLongAsync(cancellationToken);
+        if (fileSizeMessage.Type != ByteMessageType.Metadata)
+            throw new IOException("Received unexpected message type.");
+
+        return (fileNameMessage.Data, fileHashMessage.Data, fileSizeMessage.Data);
     }
 
     public async Task SendLastWrittenBlockAsync(long block, CancellationToken cancellationToken = default)
@@ -144,7 +149,8 @@ public readonly struct SenderParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
-    public async Task SendMetadataAsync(string filename, byte[] fileHash, CancellationToken cancellationToken = default)
+    public async Task SendMetadataAsync(string filename, byte[] fileHash, long fileSize,
+        CancellationToken cancellationToken = default)
     {
         await _byteTransferManager.SendAsync(new ByteMessage<string>
         {
@@ -155,6 +161,12 @@ public readonly struct SenderParameterCommunicationManager
         await _byteTransferManager.SendAsync(new ByteMessage<byte[]>
         {
             Data = fileHash,
+            Type = ByteMessageType.Metadata
+        }, cancellationToken);
+
+        await _byteTransferManager.SendAsync(new ByteMessage<long>
+        {
+            Data = fileSize,
             Type = ByteMessageType.Metadata
         }, cancellationToken);
     }
