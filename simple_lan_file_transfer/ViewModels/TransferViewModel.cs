@@ -108,9 +108,11 @@ public partial class TransferViewModel : ViewModelBase
                 await receiver.ReceiveBytesAsync(pauseToken: pauseToken);
             }
         }
-        // TODO: Exception handling
-        catch (OperationCanceledException)
-        { }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
+                                       or InvalidPasswordException or RemoteTransferCancelledException)
+        {
+            await ShowPopup(ex.Message);
+        }
 
         await OnTransferFinishAsync();
     }
@@ -267,6 +269,8 @@ public partial class TransferViewModel
             await parameterCommunicationManager.ReceivePassword(password, cancellationToken);
 
             var (receivedFileName, hash, fileSize) = await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
+            await AskForTransferConfirmationAsync(receivedFileName, socket.RemoteEndPoint!.ToString()!);
+
             var metadataFileName = BitConverter.ToString(hash);
 
             FileCarrier result = await GetCorrectMetadataAndDataFileAsync(rootFolder, metadataFolderName,
@@ -299,7 +303,7 @@ public partial class TransferViewModel
                 ButtonEnum.YesNoAbort,
                 Icon.Warning);
 
-            return await messageBoxManager.ShowAsync();
+            return await ShowPopup(messageBoxManager);
         }
 
         private static async Task<FileCarrier> GetCorrectMetadataAndDataFileAsync(
@@ -395,6 +399,25 @@ public partial class TransferViewModel
                 if (available is not null) return available.Value.FileName;
 
                 start += batchSize;
+            }
+        }
+
+        private static async Task AskForTransferConfirmationAsync(string fileName, string ip)
+        {
+            const string title = "Transfer confirmation";
+            var message = $"Do you want to receive {fileName} from {ip}?";
+
+            var messageBoxManager = MessageBoxManager.GetMessageBoxStandard(
+                title,
+                message,
+                ButtonEnum.YesNo,
+                Icon.Info);
+
+            ButtonResult result = await ShowPopup(messageBoxManager);
+
+            if (result == ButtonResult.No)
+            {
+                throw new LocalTransferCancelledException("Transfer was cancelled by user");
             }
         }
 
