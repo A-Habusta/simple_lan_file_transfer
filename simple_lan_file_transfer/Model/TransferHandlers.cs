@@ -93,6 +93,20 @@ public readonly struct ByteTransferManagerInterfaceWrapper
         _byteTransferManagerAsync.ReceiveAsync(bytes => BitConverter.ToInt64(bytes), cancellationToken);
 }
 
+public readonly struct FileMetadata
+{
+    public void Deconstruct(out string filename, out byte[] fileHash, out long fileSize)
+    {
+        filename = Name;
+        fileHash = Hash;
+        fileSize = Size;
+    }
+
+    public string Name { get; init; }
+    public byte[] Hash { get; init; }
+    public long Size { get; init; }
+}
+
 public readonly struct ReceiverParameterCommunicationManager
 {
     private readonly ByteTransferManagerInterfaceWrapper _byteTransferManager;
@@ -102,7 +116,24 @@ public readonly struct ReceiverParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
-    public async Task<(string filename, byte[] fileHash, long fileSize)> ReceiveMetadataAsync(
+    public async Task ReceiveHashedPassword(IEnumerable<byte> actualHashedPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var passwordMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
+        if (passwordMessage.Type != ByteMessageType.Metadata)
+            throw new IOException("Received unexpected message type.");
+
+        if (!actualHashedPassword.SequenceEqual(passwordMessage.Data))
+        {
+            await _byteTransferManager.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
+            throw new InvalidPasswordException("Received password was incorrect.");
+        }
+
+        // Blank message to indicate password was correct
+        await _byteTransferManager.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.Metadata }, cancellationToken);
+    }
+
+    public async Task<FileMetadata> ReceiveMetadataAsync(
         CancellationToken cancellationToken = default)
     {
         var fileNameMessage = await _byteTransferManager.ReceiveStringAsync(cancellationToken);
@@ -127,7 +158,12 @@ public readonly struct ReceiverParameterCommunicationManager
         if (fileSizeMessage.Type != ByteMessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
-        return (fileNameMessage.Data, fileHashMessage.Data, fileSizeMessage.Data);
+        return new FileMetadata{
+            Name = fileNameMessage.Data,
+            Hash = fileHashMessage.Data,
+            Size = fileSizeMessage.Data
+
+        };
     }
 
     public async Task SendLastWrittenBlockAsync(long block, CancellationToken cancellationToken = default)
@@ -149,9 +185,24 @@ public readonly struct SenderParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
-    public async Task SendMetadataAsync(string filename, byte[] fileHash, long fileSize,
-        CancellationToken cancellationToken = default)
+    public async Task SendHashedPassword(byte[] password, CancellationToken cancellationToken = default)
     {
+        await _byteTransferManager.SendAsync(new ByteMessage<byte[]>
+        {
+            Data = password,
+            Type = ByteMessageType.Metadata
+        }, cancellationToken);
+
+        var resultMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
+        if (resultMessage.Type == ByteMessageType.EndOfTransfer)
+        {
+            throw new InvalidPasswordException("The password was incorrect.");
+        }
+    }
+
+    public async Task SendMetadataAsync(FileMetadata metadata, CancellationToken cancellationToken = default)
+    {
+        var (filename, fileHash, fileSize) = metadata;
         await _byteTransferManager.SendAsync(new ByteMessage<string>
         {
             Data = filename,
@@ -202,4 +253,9 @@ public class RemoteTransferCancelledException : Exception
 public class LocalTransferCancelledException : Exception
 {
     public LocalTransferCancelledException(string message) : base(message) { }
+}
+
+public class InvalidPasswordException : Exception
+{
+    public InvalidPasswordException(string message) : base(message) { }
 }
