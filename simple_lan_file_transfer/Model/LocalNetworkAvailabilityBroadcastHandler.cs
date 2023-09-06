@@ -37,10 +37,10 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
         {
             ClearBroadcastedAddressesPerInterface();
 
-            var addresses = FindAllLocalAddressInfo();
+            var addresses = Utility.FindAllLocalAddressInfo();
             foreach (UnicastIPAddressInformation addressInfo in addresses)
             {
-                IPAddress broadcastAddress = CalculateNetworkBroadcastAddress(addressInfo);
+                IPAddress broadcastAddress = Utility.CalculateNetworkBroadcastAddress(addressInfo);
 
                 var bytes = addressInfo.Address.GetAddressBytes();
                 Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -120,6 +120,10 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var ipAddress = new IPAddress(result.Buffer);
+
+                // We don't want to add our own IP address to the list
+                if (IsIpAddressOurs(ipAddress)) continue;
+
                 AvailableIpAddresses.Add(ipAddress);
             }
         }
@@ -134,6 +138,12 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
             }
 
             base.Dispose(disposing);
+        }
+
+        private bool IsIpAddressOurs(IPAddress ipAddress)
+        {
+            var addresses = Utility.FindAllLocalAddressInfo();
+            return addresses.Any(addressInfo => addressInfo.Address.Equals(ipAddress));
         }
     }
 
