@@ -116,20 +116,20 @@ public readonly struct ReceiverParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
-    public async Task ReceiveHashedPassword(IEnumerable<byte> actualHashedPassword,
+    public async Task ReceiveHashedPassword(byte[] actualHashedPassword,
         CancellationToken cancellationToken = default)
     {
         var passwordMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
         if (passwordMessage.Type != ByteMessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
-        if (!actualHashedPassword.SequenceEqual(passwordMessage.Data))
+        if (actualHashedPassword != Array.Empty<byte>() && !actualHashedPassword.SequenceEqual(passwordMessage.Data))
         {
             await _byteTransferManager.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
             throw new InvalidPasswordException("Received password was incorrect.");
         }
 
-        // Blank message to indicate password was correct
+        // Blank message to indicate password was correct/no password is required
         await _byteTransferManager.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.Metadata }, cancellationToken);
     }
 
@@ -162,7 +162,6 @@ public readonly struct ReceiverParameterCommunicationManager
             Name = fileNameMessage.Data,
             Hash = fileHashMessage.Data,
             Size = fileSizeMessage.Data
-
         };
     }
 
