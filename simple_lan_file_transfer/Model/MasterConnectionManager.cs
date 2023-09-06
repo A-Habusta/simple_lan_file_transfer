@@ -47,3 +47,24 @@ public sealed class MasterConnectionManager
         return socket;
     }
 }
+
+public sealed class MasterConnectionManagerListenerWrapper : NetworkLoopBase
+{
+    public event EventHandler<Socket>? NewIncomingConnection;
+    private readonly MasterConnectionManager _masterConnectionManager;
+
+    public MasterConnectionManagerListenerWrapper(MasterConnectionManager masterConnectionManager)
+    {
+        _masterConnectionManager = masterConnectionManager;
+    }
+
+    protected override async Task LoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            Socket socket = await _masterConnectionManager.StartNewIncomingTransferAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            NewIncomingConnection?.Invoke(this, socket);
+        }
+    }
+}
