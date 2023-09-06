@@ -1,5 +1,5 @@
-﻿using MsBox.Avalonia;
-using Avalonia.Platform.Storage;
+﻿using Avalonia.Platform.Storage;
+using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using simple_lan_file_transfer.Models;
 using simple_lan_file_transfer.Services;
@@ -9,12 +9,12 @@ namespace simple_lan_file_transfer.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
-    public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
+    public ObservableConcurrentDictionary<string, ConnectionTabViewModel> TabConnections { get; } = new();
 
     public ObservableCollection<string> AvailableIpAddresses { get; } = new();
 
-    private MasterConnectionManager _connectionManager = new(Utility.DefaultPort);
     private LocalNetworkAvailabilityBroadcastHandler _broadcastHandler = new();
+    private MasterConnectionManagerListenerWrapper _connectionManagerWrapper;
 
     // Do not access directly - use GetStorageProviderService() instead
     private StorageProviderWrapper? _storageProviderWrapper;
@@ -24,34 +24,12 @@ public class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         _broadcastHandler.AvailableIpAddresses.CollectionChanged += OnAvailableIpAddressesChanged;
-    }
 
+        var connectionManager = new MasterConnectionManager(Utility.DefaultPort);
+        _connectionManagerWrapper = new MasterConnectionManagerListenerWrapper(connectionManager);
 
-    public async Task StartFileSendAsync(string ipAddress, string password)
-    {
-        if (!IPAddress.TryParse(ipAddress, out IPAddress? ipAddressObj))
-        {
-            await ShowPopup($"Invalid IP address {ipAddress}.");
-            return;
-        }
-
-        var files = await GetStorageProviderService().PickFilesAsync(pickerTitle: "Pick files to send");
-
-        IStorageFile? savedFile = null;
-        try
-        {
-            foreach (IStorageFile file in files)
-            {
-                savedFile = file;
-                await CreateNewOutgoingTransferAsync(file, ipAddressObj, Utility.DefaultPort, password);
-            }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
-                                      or InvalidPasswordException or RemoteTransferCancelledException)
-        {
-            savedFile?.Dispose();
-            await ShowPopup(ex.Message);
-        }
+        _connectionManagerWrapper.NewIncomingConnection += OnNewIncomingConnection;
+        _connectionManagerWrapper.RunLoop();
     }
 
     public void ChangeBroadcastTransmitState(bool newState)
@@ -88,6 +66,33 @@ public class MainViewModel : ViewModelBase
         await GetStorageProviderService().PickNewBookmarkedFolderAsync("Pick new receive folder");
     }
 
+    public async Task StartFileSendAsync(string ipAddressString, string password)
+    {
+        if (!IPAddress.TryParse(ipAddressString, out IPAddress? ipAddress))
+        {
+            await ShowPopup($"Invalid IP address {ipAddressString}");
+            return;
+        }
+
+        var files = await GetStorageProviderService().PickFilesAsync(pickerTitle: "Pick files to send");
+
+        IStorageFile? savedFile = null;
+        try
+        {
+            foreach (IStorageFile file in files)
+            {
+                savedFile = file;
+                await CreateNewOutgoingTransferAsync(file, ipAddress, Utility.DefaultPort, password);
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
+                                      or InvalidPasswordException or RemoteTransferCancelledException)
+        {
+            savedFile?.Dispose();
+            await ShowPopup(ex.Message);
+        }
+    }
+
     private StorageProviderWrapper GetStorageProviderService()
     {
         if (_storageProviderWrapper is not null) return _storageProviderWrapper;
@@ -100,12 +105,6 @@ public class MainViewModel : ViewModelBase
         return _storageProviderWrapper;
     }
 
-    private static async Task ShowPopup(string message)
-    {
-        var popup = MessageBoxManager.GetMessageBoxStandard("Notice", message);
-        await popup.ShowAsync();
-    }
-
     private async Task CreateNewIncomingTransferAsync(Socket socket, CancellationToken cancellationToken = default)
     {
         IStorageFolder receiveRootFolder = await GetStorageProviderService().GetBookmarkedFolderAsync();
@@ -115,13 +114,19 @@ public class MainViewModel : ViewModelBase
         try
         {
             viewModel = await TransferViewModel.TransferViewModelAsyncFactory.CreateIncomingTransferViewModelAsync(
-                socket, receiveRootFolderWrapper, Utility.DefaultMetadataDirectory, _password,
-                cancellationToken);
+                socket, receiveRootFolderWrapper, Utility.DefaultMetadataDirectory, _password, cancellationToken);
         }
-        catch (Exception)
+        catch (LocalTransferCancelledException)
         {
             socket.Dispose();
-            throw;
+            return;
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
+                                      or InvalidPasswordException or RemoteTransferCancelledException)
+        {
+            socket.Dispose();
+            await ShowPopup(ex.Message);
+            return;
         }
 
         IPAddress ipAddress = ((IPEndPoint)socket.RemoteEndPoint!).Address;
@@ -132,8 +137,7 @@ public class MainViewModel : ViewModelBase
     private async Task CreateNewOutgoingTransferAsync(IStorageFile file, IPAddress ipAddress, int port, string password,
         CancellationToken cancellationToken = default)
     {
-        Socket socket;
-        socket = await MasterConnectionManager.StartNewOutgoingTransferAsync(ipAddress, port, cancellationToken);
+        Socket socket = await MasterConnectionManager.StartNewOutgoingTransferAsync(ipAddress, port, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
         TransferViewModel viewModel;
@@ -156,16 +160,14 @@ public class MainViewModel : ViewModelBase
 
     private ConnectionTabViewModel GetTabConnectionViewModel(string tabName)
     {
-        ConnectionTabViewModel result = TabConnections.FirstOrDefault(x => x.TabName == tabName) ??
-                                        CreateNewTabConnectionViewModel(tabName);
-
-        return result;
+        var exists = TabConnections.TryGetValue(tabName, out ConnectionTabViewModel? tabConnectionViewModel);
+        return exists ? tabConnectionViewModel! : CreateNewTabConnectionViewModel(tabName);
     }
 
     private ConnectionTabViewModel CreateNewTabConnectionViewModel(string tabName)
     {
         var result = new ConnectionTabViewModel(tabName);
-        TabConnections.Add(result);
+        TabConnections.Add(tabName, result);
 
         return result;
     }
@@ -208,5 +210,10 @@ public class MainViewModel : ViewModelBase
             default:
                 throw new ArgumentOutOfRangeException(nameof(e));
         }
+    }
+
+    private async void OnNewIncomingConnection(object? sender, Socket socket)
+    {
+        await CreateNewIncomingTransferAsync(socket);
     }
 }
