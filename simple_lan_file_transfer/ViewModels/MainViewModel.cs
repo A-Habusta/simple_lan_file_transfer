@@ -13,8 +13,8 @@ public class MainViewModel : ViewModelBase
 
     public ObservableCollection<string> AvailableIpAddresses { get; } = new();
 
-    private LocalNetworkAvailabilityBroadcastHandler _broadcastHandler = new();
-    private MasterConnectionManagerListenerWrapper _connectionManagerWrapper;
+    private readonly LocalNetworkAvailabilityBroadcastHandler _broadcastHandler = new();
+    private readonly MasterConnectionManagerListenerWrapper _connectionManagerWrapper;
 
     // Do not access directly - use GetStorageProviderService() instead
     private StorageProviderWrapper? _storageProviderWrapper;
