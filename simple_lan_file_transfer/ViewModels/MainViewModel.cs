@@ -9,19 +9,22 @@ namespace simple_lan_file_transfer.ViewModels;
 public class MainViewModel : ViewModelBase
 {
     public MasterConnectionManager ConnectionManager { get; } = new(Utility.DefaultPort);
+
+    // Do not access directly - use GetStorageProviderService() instead
     private StorageProviderWrapper? _storageProviderWrapper;
 
     private string _password = string.Empty;
 
-    public void GetAndStoreStorageProviderService()
+    private StorageProviderWrapper GetStorageProviderService()
     {
-        if (_storageProviderWrapper is not null) return;
+        if (_storageProviderWrapper is not null) return _storageProviderWrapper;
 
         var storageProviderService = App.Services?.GetRequiredService<IExposeStorageProviderService>();
         if (storageProviderService is null)
             throw new InvalidOperationException("Storage provider service is null.");
 
         _storageProviderWrapper = new StorageProviderWrapper(storageProviderService.StorageProvider);
+        return _storageProviderWrapper;
     }
 
     public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
@@ -34,7 +37,7 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        var files = await _storageProviderWrapper!.PickFilesAsync(pickerTitle: "Pick files to send");
+        var files = await GetStorageProviderService().PickFilesAsync(pickerTitle: "Pick files to send");
 
         IStorageFile? savedFile = null;
         try
@@ -66,7 +69,7 @@ public class MainViewModel : ViewModelBase
 
     private async Task CreateNewIncomingTransferAsync(Socket socket, CancellationToken cancellationToken = default)
     {
-        IStorageFolder receiveRootFolder = await _storageProviderWrapper!.GetBookmarkedFolderAsync();
+        IStorageFolder receiveRootFolder = await GetStorageProviderService().GetBookmarkedFolderAsync();
         using var receiveRootFolderWrapper = new StorageFolderWrapper(receiveRootFolder);
 
         TransferViewModel viewModel;

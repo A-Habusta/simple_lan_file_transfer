@@ -42,9 +42,8 @@ public partial class App : Application
             services.AddSingleton<IExposeStorageProviderService>(_ => new ExposeStorageProviderService(singleViewPlatform.MainView));
         }
 
-        Services = services.BuildServiceProvider();
-        mainViewModel.GetAndStoreStorageProviderService();
-
         base.OnFrameworkInitializationCompleted();
+
+        Services = services.BuildServiceProvider();
     }
 }
