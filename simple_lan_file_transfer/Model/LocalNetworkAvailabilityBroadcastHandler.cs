@@ -74,33 +74,6 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
             _broadcastedAddressesPerInterface.Clear();
         }
 
-        private static List<UnicastIPAddressInformation> FindAllLocalAddressInfo()
-        {
-            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-            return interfaces
-                .Where(@interface => @interface.OperationalStatus == OperationalStatus.Up)
-                .Where(@interface => @interface.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-                .SelectMany(@interface => @interface.GetIPProperties().UnicastAddresses)
-                .Where(addressInfo => addressInfo.Address.AddressFamily == AddressFamily.InterNetwork)
-                .ToList();
-
-        }
-
-        private static IPAddress CalculateNetworkBroadcastAddress(UnicastIPAddressInformation addressInfo)
-        {
-            var bytes = addressInfo.Address.GetAddressBytes();
-            var subnetMaskBytes = addressInfo.IPv4Mask.GetAddressBytes();
-
-            var broadcastBytes = new byte[bytes.Length];
-
-            // Sets all network bits to 1, which is the network broadcast address
-            for (var i = 0; i < bytes.Length; i++)
-            {
-                broadcastBytes[i] = (byte) (bytes[i] | ~subnetMaskBytes[i]);
-            }
-
-            return new IPAddress(broadcastBytes);
-        }
 
         protected override void Dispose(bool disposing)
         {
