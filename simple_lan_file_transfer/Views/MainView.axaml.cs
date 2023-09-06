@@ -19,4 +19,12 @@ public partial class MainView : UserControl
 
         (DataContext as MainViewModel)?.StartFileSendAsync(ip, password);
     }
+
+    public void ChangeIpAddressFieldText(object? sender, RoutedEventArgs e)
+    {
+        var castSender = (Button?)sender;
+        if (castSender is null) return;
+
+        TextBoxTargetIp.Text = castSender.Content?.ToString();
+    }
 }
