@@ -5,7 +5,7 @@ namespace simple_lan_file_transfer.ViewModels;
 public class StorageProviderWrapper
 {
     private readonly IStorageProvider _storageProvider;
-    private string _bookmark = string.Empty;
+    private string? _bookmark;
 
 
     public StorageProviderWrapper(IStorageProvider storageProvider)
@@ -38,20 +38,25 @@ public class StorageProviderWrapper
 
         using IStorageItem folder = folders[0];
 
-        var bookmark = await folder.SaveBookmarkAsync();
-        _bookmark = bookmark ?? throw new IOException("System denied request to save bookmark.");
+        var bookmark = await folder.SaveBookmarkAsync() ?? throw new IOException("Unable to save bookmark");
+        await SaveNewBookmarkAsync(bookmark);
     }
 
     public async Task<IStorageFolder> GetBookmarkedFolderAsync()
     {
-        IStorageFolder? folder = await _storageProvider.OpenFolderBookmarkAsync(_bookmark);
+        if (_bookmark is null) await PickNewBookmarkedFolderAsync("Pick a folder to save files to");
+
+        IStorageFolder? folder = await _storageProvider.OpenFolderBookmarkAsync(_bookmark!);
         return folder ?? throw new IOException("Can't access bookmarked folder");
     }
 
-    private async Task ReplaceBookmarkAsync(string newBookmark)
+    private async Task SaveNewBookmarkAsync(string newBookmark)
     {
-        using var folder = (IStorageBookmarkFolder)await GetBookmarkedFolderAsync();
-        await folder.ReleaseBookmarkAsync();
+        if (_bookmark is not null)
+        {
+            using var oldFolder = (IStorageBookmarkFolder)await GetBookmarkedFolderAsync();
+            await oldFolder.ReleaseBookmarkAsync();
+        }
 
         _bookmark = newBookmark;
     }
