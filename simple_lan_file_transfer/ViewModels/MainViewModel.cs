@@ -1,5 +1,6 @@
 ﻿using MsBox.Avalonia;
 using Avalonia.Platform.Storage;
+using System.Collections.Specialized;
 using simple_lan_file_transfer.Models;
 using simple_lan_file_transfer.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,26 +9,23 @@ namespace simple_lan_file_transfer.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
-    public MasterConnectionManager ConnectionManager { get; } = new(Utility.DefaultPort);
+    public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
+
+    public ObservableCollection<string> AvailableIpAddresses { get; } = new();
+
+    private MasterConnectionManager _connectionManager = new(Utility.DefaultPort);
+    private LocalNetworkAvailabilityBroadcastHandler _broadcastHandler = new();
 
     // Do not access directly - use GetStorageProviderService() instead
     private StorageProviderWrapper? _storageProviderWrapper;
 
     private string _password = string.Empty;
 
-    private StorageProviderWrapper GetStorageProviderService()
+    public MainViewModel()
     {
-        if (_storageProviderWrapper is not null) return _storageProviderWrapper;
-
-        var storageProviderService = App.Services?.GetRequiredService<IExposeStorageProviderService>();
-        if (storageProviderService is null)
-            throw new InvalidOperationException("Storage provider service is null.");
-
-        _storageProviderWrapper = new StorageProviderWrapper(storageProviderService.StorageProvider);
-        return _storageProviderWrapper;
+        _broadcastHandler.AvailableIpAddresses.CollectionChanged += OnAvailableIpAddressesChanged;
     }
 
-    public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
 
     public async Task StartFileSendAsync(string ipAddress, string password)
     {
@@ -59,6 +57,18 @@ public class MainViewModel : ViewModelBase
     public void SaveNewPassword(string password)
     {
         _password = password;
+    }
+
+    private StorageProviderWrapper GetStorageProviderService()
+    {
+        if (_storageProviderWrapper is not null) return _storageProviderWrapper;
+
+        var storageProviderService = App.Services?.GetRequiredService<IExposeStorageProviderService>();
+        if (storageProviderService is null)
+            throw new InvalidOperationException("Storage provider service is null.");
+
+        _storageProviderWrapper = new StorageProviderWrapper(storageProviderService.StorageProvider);
+        return _storageProviderWrapper;
     }
 
     private static async Task ShowPopup(string message)
@@ -129,5 +139,45 @@ public class MainViewModel : ViewModelBase
         TabConnections.Add(result);
 
         return result;
+    }
+
+    private void OnAvailableIpAddressesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+            {
+                foreach (IPAddress ipAddress in e.NewItems!.OfType<IPAddress>())
+                {
+                    var ipAddressString = ipAddress.ToString();
+                    if (!AvailableIpAddresses.Contains(ipAddressString))
+                    {
+                        AvailableIpAddresses.Add(ipAddressString);
+                    }
+                }
+
+                break;
+            }
+            case NotifyCollectionChangedAction.Remove:
+            {
+                foreach (IPAddress ipAddress in e.OldItems!.OfType<IPAddress>())
+                {
+                    AvailableIpAddresses.Remove(ipAddress.ToString());
+                }
+
+                break;
+            }
+            case NotifyCollectionChangedAction.Reset:
+            {
+                AvailableIpAddresses.Clear();
+                break;
+            }
+            case NotifyCollectionChangedAction.Move:
+                break;
+            case NotifyCollectionChangedAction.Replace:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(e));
+        }
     }
 }

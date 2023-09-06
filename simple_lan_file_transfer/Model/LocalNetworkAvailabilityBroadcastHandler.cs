@@ -87,7 +87,7 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
     private class LocalNetworkAvailabilityBroadcastReceiver : NetworkLoopBase
     {
         private readonly UdpClient _broadcastListener = new(Utility.DefaultBroadcastPort);
-        public List<IPAddress> AvailableIpAddresses { get; } = new();
+        public ObservableCollection<IPAddress> AvailableIpAddresses { get; } = new();
 
         protected override async Task LoopAsync(CancellationToken cancellationToken)
         {
@@ -120,7 +120,7 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
     private readonly LocalNetworkAvailabilityBroadcastSender _localNetworkAvailabilityBroadcastSender = new();
     private readonly LocalNetworkAvailabilityBroadcastReceiver _localNetworkAvailabilityBroadcastReceiver = new();
 
-    public List<IPAddress> AvailableIpAddresses => _localNetworkAvailabilityBroadcastReceiver.AvailableIpAddresses;
+    public ObservableCollection<IPAddress> AvailableIpAddresses => _localNetworkAvailabilityBroadcastReceiver.AvailableIpAddresses;
 
     public void StartBroadcast() => _localNetworkAvailabilityBroadcastSender.RunLoop();
     public void StopBroadcast() => _localNetworkAvailabilityBroadcastSender.StopLoop();
