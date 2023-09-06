@@ -116,14 +116,14 @@ public readonly struct ReceiverParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
-    public async Task ReceiveHashedPassword(byte[] actualHashedPassword,
+    public async Task ReceivePassword(string actualPassword,
         CancellationToken cancellationToken = default)
     {
-        var passwordMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
+        var passwordMessage = await _byteTransferManager.ReceiveStringAsync(cancellationToken);
         if (passwordMessage.Type != ByteMessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
-        if (actualHashedPassword != Array.Empty<byte>() && !actualHashedPassword.SequenceEqual(passwordMessage.Data))
+        if (actualPassword != string.Empty && actualPassword != passwordMessage.Data)
         {
             await _byteTransferManager.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
             throw new InvalidPasswordException("Received password was incorrect.");
@@ -184,9 +184,9 @@ public readonly struct SenderParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
-    public async Task SendHashedPassword(byte[] password, CancellationToken cancellationToken = default)
+    public async Task SendPassword(string password, CancellationToken cancellationToken = default)
     {
-        await _byteTransferManager.SendAsync(new ByteMessage<byte[]>
+        await _byteTransferManager.SendAsync(new ByteMessage<string>
         {
             Data = password,
             Type = ByteMessageType.Metadata

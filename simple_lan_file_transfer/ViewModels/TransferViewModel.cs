@@ -193,8 +193,21 @@ public partial class TransferViewModel
     public static class TransferViewModelAsyncFactory
     {
         public static async Task<TransferViewModel> CreateOutgoingTransferViewModelAsync(Socket socket,
-            IStorageFile file, CancellationToken cancellationToken = default)
+            IStorageFile file, string password, CancellationToken cancellationToken = default)
         {
+            NetworkTransferManagerAsync networkTransferManager = new (socket);
+            SenderParameterCommunicationManager parameterCommunicationManager = new (networkTransferManager);
+
+            try
+            {
+                await parameterCommunicationManager.SendPassword(password, cancellationToken);
+            }
+            catch (Exception)
+            {
+                networkTransferManager.Dispose();
+                throw;
+            }
+
             Stream fileStream = await file.OpenReadAsync();
 
             var fileSize = (await file.GetBasicPropertiesAsync()).Size
@@ -203,8 +216,6 @@ public partial class TransferViewModel
             var fileSizeSigned = (long)fileSize;
 
             FileBlockAccessManager fileAccessManager = new (fileStream, fileSizeSigned);
-            NetworkTransferManagerAsync networkTransferManager = new (socket);
-            SenderParameterCommunicationManager parameterCommunicationManager = new (networkTransferManager);
 
             var fileName = file.Name;
 
@@ -217,7 +228,14 @@ public partial class TransferViewModel
             long lastWrittenBlock;
             try
             {
-                await parameterCommunicationManager.SendMetadataAsync(fileName, hash, fileSizeSigned, cancellationToken);
+                var metadata = new FileMetadata
+                {
+                    Name = fileName,
+                    Hash = hash,
+                    Size = fileSizeSigned
+                };
+
+                await parameterCommunicationManager.SendMetadataAsync(metadata, cancellationToken);
                 lastWrittenBlock = await parameterCommunicationManager.ReceiveLastWrittenBlock(cancellationToken);
             }
             catch (Exception)
@@ -236,11 +254,17 @@ public partial class TransferViewModel
                 file);
         }
 
-        public static async Task<TransferViewModel> CreateIncomingTransferViewModelAsync(Socket socket,
-            StorageFolderWrapper rootFolder, string metadataFolderName, CancellationToken cancellationToken = default)
+        public static async Task<TransferViewModel> CreateIncomingTransferViewModelAsync(
+            Socket socket,
+            StorageFolderWrapper rootFolder,
+            string metadataFolderName,
+            string password,
+            CancellationToken cancellationToken = default)
         {
             NetworkTransferManagerAsync networkTransferManager = new (socket);
             ReceiverParameterCommunicationManager parameterCommunicationManager = new (networkTransferManager);
+
+            await parameterCommunicationManager.ReceivePassword(password, cancellationToken);
 
             var (receivedFileName, hash, fileSize) = await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
             var metadataFileName = BitConverter.ToString(hash);
