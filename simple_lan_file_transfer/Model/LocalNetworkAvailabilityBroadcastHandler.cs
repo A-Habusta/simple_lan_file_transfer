@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace simple_lan_file_transfer.Models;
 
 public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
@@ -15,6 +17,7 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
             var tasks = new List<Task>();
             for(;;)
             {
+                tasks.Clear();
                 cancellationToken.ThrowIfCancellationRequested();
 
                 foreach ((UdpClient client, var bytes) in _broadcastedAddressesPerInterface)
@@ -32,15 +35,43 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
 
         private void PopulateBroadcastedAddressesPerInterface()
         {
+            ClearBroadcastedAddressesPerInterface();
+
             var addresses = FindAllLocalAddressInfo();
             foreach (UnicastIPAddressInformation addressInfo in addresses)
             {
                 IPAddress broadcastAddress = CalculateNetworkBroadcastAddress(addressInfo);
 
-                var bytes = broadcastAddress.GetAddressBytes();
-                var client = new UdpClient(new IPEndPoint(addressInfo.Address, Utility.DefaultBroadcastPort));
+                var bytes = addressInfo.Address.GetAddressBytes();
+                Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+
+                var localEndPoint = new IPEndPoint(addressInfo.Address, 0);
+                var remoteEndPoint = new IPEndPoint(broadcastAddress, Utility.DefaultBroadcastPort);
+
+                // This should not be done on Windows, reason here: https://stackoverflow.com/a/14388707
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                }
+
+                socket.Bind(localEndPoint);
+                socket.EnableBroadcast = true;
+
+                UdpClient client = new() { Client = socket };
+                client.Connect(remoteEndPoint);
+
                 _broadcastedAddressesPerInterface.Add((client, bytes));
             }
+        }
+
+        private void ClearBroadcastedAddressesPerInterface()
+        {
+            foreach ((UdpClient client, _) in _broadcastedAddressesPerInterface)
+            {
+                client.Dispose();
+            }
+
+            _broadcastedAddressesPerInterface.Clear();
         }
 
         private static List<UnicastIPAddressInformation> FindAllLocalAddressInfo()
@@ -86,8 +117,24 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
 
     private class LocalNetworkAvailabilityBroadcastReceiver : NetworkLoopBase
     {
-        private readonly UdpClient _broadcastListener = new(Utility.DefaultBroadcastPort);
+        private readonly UdpClient _broadcastListener;
         public ObservableCollection<IPAddress> AvailableIpAddresses { get; } = new();
+
+        public LocalNetworkAvailabilityBroadcastReceiver()
+        {
+            Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            }
+
+            var localEndPoint = new IPEndPoint(IPAddress.Any, Utility.DefaultBroadcastPort);
+
+            socket.ReceiveTimeout = 0;
+            socket.Bind(localEndPoint);
+
+            _broadcastListener = new UdpClient { Client = socket };
+        }
 
         protected override async Task LoopAsync(CancellationToken cancellationToken)
         {

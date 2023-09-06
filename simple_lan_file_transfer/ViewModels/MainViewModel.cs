@@ -54,9 +54,38 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    public void ChangeBroadcastTransmitState(bool newState)
+    {
+        if (newState)
+        {
+            _broadcastHandler.StartBroadcast();
+        }
+        else
+        {
+            _broadcastHandler.StopBroadcast();
+        }
+    }
+
+    public void ChangeBroadcastListenState(bool newState)
+    {
+        if (newState)
+        {
+            _broadcastHandler.StartListening();
+        }
+        else
+        {
+            _broadcastHandler.StopListening();
+        }
+    }
+
     public void SaveNewPassword(string password)
     {
         _password = password;
+    }
+
+    public async Task OpenNewReceiveFolder()
+    {
+        await GetStorageProviderService().PickNewBookmarkedFolderAsync("Pick new receive folder");
     }
 
     private StorageProviderWrapper GetStorageProviderService()
