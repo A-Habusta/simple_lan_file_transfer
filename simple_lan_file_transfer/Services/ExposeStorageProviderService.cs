@@ -21,7 +21,7 @@ public class ExposeStorageProviderService : IExposeStorageProviderService
         _mainVisual = control;
     }
 
-    public IStorageProvider InitializeStorageProviderFromVisual()
+    private IStorageProvider InitializeStorageProviderFromVisual()
     {
         if (_mainVisual is null) throw new InvalidOperationException("Visual is null.");
 
