@@ -15,7 +15,6 @@
         <vm:MainViewModel />
     </Design.DataContext>
     <TabControl HorizontalContentAlignment="Center" HorizontalAlignment="Center">
-
         <TabItem Header="Transfers">
             <TabControl ItemsSource="{Binding TabConnections}">
                 <TabControl.ItemTemplate>
@@ -31,7 +30,7 @@
                         <DataTemplate.DataType>
                             <x:Type TypeName="generic:KeyValuePair" x:TypeArguments="x:String, vm:ConnectionTabViewModel"/>
                         </DataTemplate.DataType>
-                        <v:SingleConnectionTabView DataContext="{Binding Value}"/>
+                            <v:SingleConnectionTabView DataContext="{Binding Value}"/>
                     </DataTemplate>
                 </TabControl.ContentTemplate>
             </TabControl>
@@ -125,9 +124,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
             </StackPanel>
         </TabItem>
-
     </TabControl>
 </UserControl>

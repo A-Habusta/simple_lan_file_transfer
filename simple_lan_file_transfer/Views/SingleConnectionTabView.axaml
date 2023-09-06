@@ -4,28 +4,32 @@
              xmlns:vm="clr-namespace:simple_lan_file_transfer.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="750" d:DesignHeight="400"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="500"
              x:Class="simple_lan_file_transfer.Views.SingleConnectionTabView"
              x:DataType="vm:ConnectionTabViewModel"
              >
-    <StackPanel Orientation="Horizontal">
-        <StackPanel>
-            <ItemsControl ItemsSource="{Binding OutgoingTransfers}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:TransferViewModel">
-                        <v:TransferView DataContext="{Binding}"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
-        <StackPanel>
-            <ItemsControl ItemsSource="{Binding IncomingTransfers}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="vm:TransferViewModel">
-                        <v:TransferView DataContext="{Binding}"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
-    </StackPanel>
+    <TabControl HorizontalContentAlignment="Center" HorizontalAlignment="Center">
+        <TabItem Header="Incoming">
+            <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding OutgoingTransfers}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:TransferViewModel">
+                            <v:TransferView DataContext="{Binding}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </TabItem>
+        <TabItem Header="Outgoing">
+            <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding IncomingTransfers}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:TransferViewModel">
+                            <v:TransferView DataContext="{Binding}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </TabItem>
+    </TabControl>
 </UserControl>
