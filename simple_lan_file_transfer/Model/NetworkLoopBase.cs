@@ -6,12 +6,20 @@ public abstract class NetworkLoopBase : IDisposable
 
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _loopTask;
+    // int to allow for Interlocked operations
+    private int _loopTaskRunning = False;
+
+    private const int True = 1;
+    private const int False = 0;
 
     protected abstract Task LoopAsync(CancellationToken cancellationToken);
 
     public void RunLoop()
     {
         if (Disposed) throw new ObjectDisposedException(nameof(NetworkLoopBase));
+
+        var loopTaskRunning = Interlocked.CompareExchange(ref _loopTaskRunning, True, False);
+        if (loopTaskRunning == True) return;
 
         _cancellationTokenSource = new CancellationTokenSource();
 
@@ -23,6 +31,7 @@ public abstract class NetworkLoopBase : IDisposable
     public void StopLoop()
     {
         _cancellationTokenSource?.Cancel();
+        Interlocked.Exchange(ref _loopTaskRunning, False);
     }
 
     public void Dispose()
