@@ -11,7 +11,7 @@
     <TabControl HorizontalContentAlignment="Center" HorizontalAlignment="Center">
         <TabItem Header="Incoming">
             <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding OutgoingTransfers}">
+                <ItemsControl ItemsSource="{Binding IncomingTransfers}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="vm:TransferViewModel">
                             <v:TransferView DataContext="{Binding}"/>
@@ -22,7 +22,7 @@
         </TabItem>
         <TabItem Header="Outgoing">
             <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding IncomingTransfers}">
+                <ItemsControl ItemsSource="{Binding OutgoingTransfers}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="vm:TransferViewModel">
                             <v:TransferView DataContext="{Binding}"/>
