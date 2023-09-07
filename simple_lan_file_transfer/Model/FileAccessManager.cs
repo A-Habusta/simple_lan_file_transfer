@@ -52,7 +52,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
     public bool SeekToBlock(long block)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
-        if (_fileStream.CanSeek) return false;
+        if (!_fileStream.CanSeek) return false;
 
         _fileStream.Seek(block * Utility.BlockSize, SeekOrigin.Begin);
 
