@@ -4,10 +4,10 @@ internal static class Utility
 {
     public const int  BytesInKiloByte = 1024;
 
-    public const int BlockSizeKb = 1024;
+    public const int BlockSizeKb = 32;
     public const int BlockSize = BlockSizeKb * BytesInKiloByte;
 
-    public const int BufferSizeKb = 8;
+    public const int BufferSizeKb = 4;
     public const int BufferSize = BufferSizeKb * BytesInKiloByte;
 
     public const ushort DefaultPort = 52123;
