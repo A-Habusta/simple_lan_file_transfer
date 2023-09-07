@@ -18,7 +18,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 {
     private bool _disposed;
     private readonly Stream _fileStream;
-    private readonly MetadataHandler? _metadataHandler;
+    private readonly MetadataWriter? _metadataHandler;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -41,7 +41,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 
     public long FileSize { get; init; }
 
-    public FileBlockAccessManager(Stream fileStream, long fileSize, MetadataHandler? metadataHandler = default)
+    public FileBlockAccessManager(Stream fileStream, long fileSize, MetadataWriter? metadataHandler = default)
     {
         if (!fileStream.CanSeek)
             throw new ArgumentException("Stream must support seek", nameof(fileStream));
@@ -110,24 +110,19 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
     }
 }
 
-public sealed class MetadataHandler : IDisposable
+public sealed class MetadataReader : IDisposable
 {
     private bool _disposed;
     private readonly Stream _metadataFileStream;
 
-    public MetadataHandler(Stream metadataFile)
+    public MetadataReader(Stream metadataFile)
     {
-        if (metadataFile.CanRead == false || metadataFile.CanWrite == false || metadataFile.CanSeek == false)
-            throw new ArgumentException("Stream must support read, write and seek", nameof(metadataFile));
         _metadataFileStream = metadataFile;
-
-        WriteLastBlockProcessed(0);
-        WriteFileName(string.Empty);
     }
 
     public long ReadFileLastWrittenBlock()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
 
         var block = new byte[sizeof(long)];
 
@@ -141,7 +136,7 @@ public sealed class MetadataHandler : IDisposable
 
     public string ReadFileName()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
 
         var fileName = new byte[_metadataFileStream.Length - sizeof(long)];
 
@@ -153,9 +148,32 @@ public sealed class MetadataHandler : IDisposable
         return Encoding.UTF8.GetString(fileName);
     }
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+
+        _metadataFileStream.Dispose();
+
+        _disposed = true;
+    }
+
+}
+public sealed class MetadataWriter : IDisposable
+{
+    private bool _disposed;
+    private readonly Stream _metadataFileStream;
+
+    public MetadataWriter(Stream metadataFile)
+    {
+        _metadataFileStream = metadataFile;
+
+        WriteLastBlockProcessed(0);
+        WriteFileName(string.Empty);
+    }
+
     public void WriteLastBlockProcessed(long block)
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
 
         _metadataFileStream.Seek(0, SeekOrigin.Begin);
         _metadataFileStream.Write(BitConverter.GetBytes(block));
@@ -164,7 +182,7 @@ public sealed class MetadataHandler : IDisposable
 
     public void WriteFileName(string fileName)
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
 
         // Truncate file to new size
         _metadataFileStream.SetLength(sizeof(long) + fileName.Length);

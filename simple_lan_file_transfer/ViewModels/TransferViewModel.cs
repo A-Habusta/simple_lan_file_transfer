@@ -272,15 +272,18 @@ public partial class TransferViewModel
 
             var metadataFileName = BitConverter.ToString(hash);
 
-            FileCarrier result = await GetCorrectMetadataAndDataFileAsync(rootFolder, metadataFolderName,
-                receivedFileName, metadataFileName);
-
-            (MetadataHandler metadataHandler, IStorageFile metadataFile, IStorageFile file) = result;
+            FileCarrier result = await GetCorrectMetadataAndDataFileAsync(rootFolder,
+                metadataFolderName,
+                receivedFileName,
+                metadataFileName);
+            (IStorageFile metadataFile, IStorageFile file, var lastWrittenBlock) = result;
 
             Stream fileStream = await file.OpenWriteAsync();
 
+            Stream metadataStream = await metadataFile.OpenWriteAsync();
+            var metadataHandler = new MetadataWriter(metadataStream);
+
             var fileAccessManager = new FileBlockAccessManager(fileStream, fileSize, metadataHandler);
-            var lastWrittenBlock = metadataHandler.ReadFileLastWrittenBlock();
             fileAccessManager.SeekToBlock(lastWrittenBlock);
 
             return new TransferViewModel(
@@ -291,81 +294,52 @@ public partial class TransferViewModel
                 metadataFile);
         }
 
-        private static async Task<ButtonResult> ShowFileConflictMessageBoxAsync(string fileName)
-        {
-            const string title = "File already exists";
-            var message = fileName + " already exists. Do you want to overwrite it?";
-
-            return await ShowPopup(message, title, ButtonEnum.YesNoAbort, Icon.Info);
-        }
-
         private static async Task<FileCarrier> GetCorrectMetadataAndDataFileAsync(
             StorageFolderWrapper rootFolder, string metadataFolderName, string receivedFileName, string metadataFileName)
         {
             StorageFolderWrapper metadataFolderProvider = await rootFolder.GetOrCreateSubFolderAsync(metadataFolderName);
+            IStorageFile metadataFile = await metadataFolderProvider.GetOrCreateFileAsync(metadataFileName);
 
-            FileExistsResults metadataFileExistsResult = await metadataFolderProvider.FileExistsAsync(metadataFileName, saveItemIfFound: true);
-            FileExistsResults receivedFileNameExistsResult = await rootFolder.FileExistsAsync(receivedFileName);
+            StorageItemProperties result = await metadataFile.GetBasicPropertiesAsync();
+            var metadataFileExists = result.Size > sizeof(long);
 
-            MetadataHandler metadataHandler;
-            IStorageFile? metadataFile;
+            var actualFileName = receivedFileName;
 
-            if (metadataFileExistsResult.Exists)
+            long lastWrittenBlock = 0;
+
+            if (metadataFileExists)
             {
-                metadataFile = metadataFileExistsResult.Item! as IStorageFile;
-                metadataHandler = new MetadataHandler(await metadataFile!.OpenWriteAsync());
-
-                var savedFileName = metadataHandler.ReadFileName();
-                FileExistsResults savedFileExistsResult = await rootFolder.FileExistsAsync(savedFileName, saveItemIfFound: true);
-
-                if (savedFileExistsResult.Exists)
-                {
-                    var fileProvider = savedFileExistsResult.Item! as IStorageFile;
-                    return new FileCarrier
-                    {
-                        MetadataHandler = metadataHandler,
-                        MetadataFile = metadataFile,
-                        File = fileProvider!
-                    };
-                }
-
-                metadataHandler.WriteLastBlockProcessed(0);
-            }
-            else
-            {
-                metadataFile = await metadataFolderProvider.CreateFileAsync(metadataFileName);
-                metadataHandler = new MetadataHandler(await metadataFile.OpenWriteAsync());
+                using var metadataReader = new MetadataReader(await metadataFile.OpenReadAsync());
+                lastWrittenBlock = metadataReader.ReadFileLastWrittenBlock();
+                actualFileName = metadataReader.ReadFileName();
             }
 
-            if (receivedFileNameExistsResult.Exists)
-            {
-                ButtonResult overwriteChoiceResults = await ShowFileConflictMessageBoxAsync(receivedFileName);
-                switch (overwriteChoiceResults)
-                {
-                    case ButtonResult.Yes:
-                        await rootFolder.DeleteFileAsync(receivedFileName);
-                        break;
-                    case ButtonResult.No:
-                        receivedFileName = await GetUniqueFileNameAsync(rootFolder, receivedFileName);
-                        break;
-                    case ButtonResult.Abort:
-                        throw new LocalTransferCancelledException("Transfer was cancelled by user");
+            actualFileName = await CheckForAndHandleFileConflicts(rootFolder, actualFileName);
+            return new FileCarrier(metadataFile, await rootFolder.GetOrCreateFileAsync(actualFileName), lastWrittenBlock);
+        }
 
-                    case ButtonResult.Ok or ButtonResult.Cancel or ButtonResult.None:
-                        goto default;
-                    default:
-                        throw new ArgumentOutOfRangeException(overwriteChoiceResults.ToString());
-                }
+        private static async Task<string> CheckForAndHandleFileConflicts(StorageFolderWrapper folder, string originalFileName)
+        {
+            FileExistsResult result = await folder.FileExistsAsync(originalFileName);
+            if (!result.Exists) return originalFileName;
+
+            ButtonResult messageBoxResult = await ShowFileConflictMessageBoxAsync(originalFileName);
+            switch (messageBoxResult)
+            {
+                case ButtonResult.Yes:
+                    await folder.DeleteFileAsync(originalFileName);
+                    return originalFileName;
+                case ButtonResult.No:
+                    return await GetUniqueFileNameAsync(folder, originalFileName);
+                case ButtonResult.Abort:
+                    throw new LocalTransferCancelledException("Transfer was cancelled by user");
+                case ButtonResult.Cancel or ButtonResult.Ok or ButtonResult.None:
+                    goto default;
+                default:
+                    throw new IndexOutOfRangeException("Invalid ButtonResult value");
             }
 
-            IStorageFile file = await rootFolder.CreateFileAsync(receivedFileName);
-            metadataHandler.WriteFileName(receivedFileName);
-            return new FileCarrier
-            {
-                MetadataHandler = metadataHandler,
-                MetadataFile = metadataFile,
-                File = file,
-            };
+
         }
 
         private static async Task<string> GetUniqueFileNameAsync(StorageFolderWrapper folder, string fileName)
@@ -387,7 +361,10 @@ public partial class TransferViewModel
                 }
 
                 var results = await folder.FilesExistAsync(filenamesToTest);
-                FileExistsResults? available = results.FirstOrDefault(x => !x.Exists);
+
+                FileExistsResult? available = results
+                    .OrderBy(x => x.FileName, StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault(x => !x.Exists);
 
                 if (available is not null) return available.Value.FileName;
 
@@ -408,20 +385,15 @@ public partial class TransferViewModel
             }
         }
 
-        private readonly struct FileCarrier
+        private static async Task<ButtonResult> ShowFileConflictMessageBoxAsync(string fileName)
         {
+            const string title = "File already exists";
+            var message = fileName + " already exists. Do you want to overwrite it?";
 
-            public void Deconstruct(out MetadataHandler metadataHandler, out IStorageFile metadataFile, out IStorageFile file)
-            {
-                metadataHandler = MetadataHandler;
-                metadataFile = MetadataFile;
-                file = File;
-            }
-
-            public MetadataHandler MetadataHandler { get; init; }
-            public IStorageFile MetadataFile { get; init; }
-            public IStorageFile File { get; init; }
+            return await ShowPopup(message, title, ButtonEnum.YesNoAbort, Icon.Info);
         }
+
+        private record struct FileCarrier(IStorageFile MetadataFile, IStorageFile TransferFile, long ReadBlocksCount);
     }
 }
 #endregion

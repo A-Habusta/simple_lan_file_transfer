@@ -62,7 +62,7 @@ public class StorageProviderWrapper
     }
 }
 
-public readonly struct FileExistsResults
+public readonly struct FileExistsResult
 {
     public string FileName { get; init; }
     public bool Exists { get; init; }
@@ -79,15 +79,15 @@ public sealed class StorageFolderWrapper : IDisposable
         _folder = folder;
     }
 
-    public async Task<FileExistsResults> FileExistsAsync(string fileName, bool saveItemIfFound = false)
+    public async Task<FileExistsResult> FileExistsAsync(string fileName, bool saveItemIfFound = false)
         => (await FilesExistAsync(new List<string> {fileName}, saveItemIfFound)).FirstOrDefault();
 
-    public async Task<IList<FileExistsResults>> FilesExistAsync(IList<string> fileNames, bool saveItemsIfFound = false)
+    public async Task<IList<FileExistsResult>> FilesExistAsync(IList<string> fileNames, bool saveItemsIfFound = false)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(StorageFolderWrapper));
 
 
-        var results = new List<FileExistsResults>(fileNames.Count);
+        var results = new List<FileExistsResult>(fileNames.Count);
 
         var items = _folder.GetItemsAsync();
 
@@ -100,7 +100,7 @@ public sealed class StorageFolderWrapper : IDisposable
                 continue;
             }
 
-            results.Add(new FileExistsResults
+            results.Add(new FileExistsResult
             {
                 FileName = storageItem.Name,
                 Exists = true,
@@ -111,7 +111,7 @@ public sealed class StorageFolderWrapper : IDisposable
             fileNames.RemoveAt(index);
         }
 
-        results.AddRange(fileNames.Select(fileName => new FileExistsResults { FileName = fileName, Exists = false, Item = null }));
+        results.AddRange(fileNames.Select(fileName => new FileExistsResult { FileName = fileName, Exists = false, Item = null }));
         return results;
     }
 
@@ -119,7 +119,7 @@ public sealed class StorageFolderWrapper : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(StorageFolderWrapper));
 
-        FileExistsResults result = await FileExistsAsync(folderName, saveItemIfFound: true);
+        FileExistsResult result = await FileExistsAsync(folderName, saveItemIfFound: true);
 
         if (!result.Exists)
         {
@@ -148,7 +148,7 @@ public sealed class StorageFolderWrapper : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(StorageFolderWrapper));
 
-        FileExistsResults result = await FileExistsAsync(fileName, saveItemIfFound: true);
+        FileExistsResult result = await FileExistsAsync(fileName, saveItemIfFound: true);
 
         if (!result.Exists) return await CreateFileAsync(fileName);
         if (result.Item is IStorageFile file)
@@ -172,7 +172,7 @@ public sealed class StorageFolderWrapper : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(StorageFolderWrapper));
 
-        FileExistsResults result = await FileExistsAsync(fileName, saveItemIfFound: true);
+        FileExistsResult result = await FileExistsAsync(fileName, saveItemIfFound: true);
 
         if (!result.Exists) return;
         if (result.Item is IStorageFile file)
