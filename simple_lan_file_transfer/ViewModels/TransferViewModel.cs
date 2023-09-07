@@ -140,10 +140,10 @@ public partial class TransferViewModel : ViewModelBase
         _fileAccessManager.PropertyChanged += OnProgressChanged;
 
         _byteSuffix = Utility.GetHighestPossibleByteSuffixForNumber(_fileAccessManager.FileSize);
-        FileSizeWithSuffix = Utility.DivideNumberToFitSuffix(_fileAccessManager.FileSize, _byteSuffix);
+        var dividedFileSize = Utility.DivideNumberToFitSuffix(_fileAccessManager.FileSize, _byteSuffix);
 
         _defaultFormatString =
-            $"{{0}} {_byteSuffix} / {FileSizeWithSuffix} {_byteSuffix}";
+            $"{{0}} {_byteSuffix} / {dividedFileSize:F2} {_byteSuffix}";
 
         _progressFormatString = _defaultFormatString;
     }
