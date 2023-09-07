@@ -79,7 +79,7 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
    private bool _disposed;
 
    private readonly Socket _socket;
-   private readonly byte[] _buffer = new byte[Utility.BlockSize];
+   private readonly byte[] _blockBuffer = new byte[Utility.BlockSize];
 
    public NetworkTransferManagerAsync(Socket socket)
    {
@@ -195,23 +195,26 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
 
    private async Task<ReadOnlyMemory<byte>> ReceiveRawDataAsync(int size, CancellationToken cancellationToken = default)
    {
-      if (size > _buffer.Length)
+      if (size > _blockBuffer.Length)
+         
       {
-         throw new ArgumentOutOfRangeException(nameof(size), "Trying to receive more data than a single block");
+         throw new ArgumentOutOfRangeException(
+            nameof(size),
+            $"Trying to receive {size} bytes into a {_blockBuffer} sized buffer");
       }
 
       var received = 0;
       while(received < size)
       {
          var toReceive = size - received;
-         var currentReceived = await _socket.ReceiveAsync(_buffer.AsMemory(received, toReceive), cancellationToken);
+         var currentReceived = await _socket.ReceiveAsync(_blockBuffer.AsMemory(received, toReceive), cancellationToken);
 
          if (currentReceived == 0) throw new IOException("Remote connection closed");
 
          received += currentReceived;
       }
 
-      return new ReadOnlyMemory<byte>(_buffer, 0, size);
+      return new ReadOnlyMemory<byte>(_blockBuffer, 0, size);
    }
 
 }
