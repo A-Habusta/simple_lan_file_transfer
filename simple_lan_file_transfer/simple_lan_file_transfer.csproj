@@ -19,6 +19,5 @@
     <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.0.4" />
     <PackageReference Include="MessageBox.Avalonia" Version="3.1.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0-preview.7.23375.6" />
-    <PackageReference Include="ParallelExtensionsExtras.NetFxStandard" Version="1.4.0" />
   </ItemGroup>
 </Project>

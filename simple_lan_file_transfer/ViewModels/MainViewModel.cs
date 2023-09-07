@@ -1,5 +1,4 @@
 ﻿using Avalonia.Platform.Storage;
-using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using simple_lan_file_transfer.Models;
 using simple_lan_file_transfer.Services;
@@ -9,7 +8,8 @@ namespace simple_lan_file_transfer.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {
-    public ObservableConcurrentDictionary<string, ConnectionTabViewModel> TabConnections { get; } = new();
+    private readonly object _tabConnectionsLock = new();
+    public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
 
     public ObservableCollection<string> AvailableIpAddresses { get; } = new();
 
@@ -160,14 +160,24 @@ public class MainViewModel : ViewModelBase
 
     private ConnectionTabViewModel GetTabConnectionViewModel(string tabName)
     {
-        var exists = TabConnections.TryGetValue(tabName, out ConnectionTabViewModel? tabConnectionViewModel);
-        return exists ? tabConnectionViewModel! : CreateNewTabConnectionViewModel(tabName);
+        ConnectionTabViewModel? connectionViewModel;
+
+        lock (_tabConnectionsLock)
+        {
+            connectionViewModel = TabConnections.FirstOrDefault(x => x.TabName == tabName);
+        }
+
+        return connectionViewModel ?? CreateNewTabConnectionViewModel(tabName);
     }
 
     private ConnectionTabViewModel CreateNewTabConnectionViewModel(string tabName)
     {
         var result = new ConnectionTabViewModel(tabName);
-        TabConnections.Add(tabName, result);
+        lock (_tabConnectionsLock)
+        {
+
+            TabConnections.Add(result);
+        }
 
         return result;
     }
