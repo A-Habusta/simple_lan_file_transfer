@@ -80,26 +80,26 @@ public readonly struct ByteTransferManagerInterfaceWrapper
         _byteTransferManagerAsync = byteTransferManagerAsync;
     }
 
-    public Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
-        _byteTransferManagerAsync.SendAsync(message, cancellationToken);
+    public async Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(message, cancellationToken);
 
-    public Task<ByteMessage<byte[]>> ReceiveBytesAsync(CancellationToken cancellationToken = default) =>
-        _byteTransferManagerAsync.ReceiveAsync(cancellationToken);
+    public async Task<ByteMessage<byte[]>> ReceiveBytesAsync(CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.ReceiveAsync(cancellationToken);
 
-    public Task SendAsync(ByteMessage<string> message, CancellationToken cancellationToken = default) =>
-        _byteTransferManagerAsync.SendAsync(message, Encoding.UTF8.GetBytes, cancellationToken);
+    public async Task SendAsync(ByteMessage<string> message, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(message, Encoding.UTF8.GetBytes, cancellationToken);
 
-    public Task<ByteMessage<string>> ReceiveStringAsync(CancellationToken cancellationToken = default) =>
-        _byteTransferManagerAsync.ReceiveAsync(Encoding.UTF8.GetString, cancellationToken);
+    public async Task<ByteMessage<string>> ReceiveStringAsync(CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.ReceiveAsync(Encoding.UTF8.GetString, cancellationToken);
 
-    public Task SendAsync(ByteMessage<long> message, CancellationToken cancellationToken = default) =>
-        _byteTransferManagerAsync.SendAsync(message, BitConverter.GetBytes, cancellationToken);
+    public async Task SendAsync(ByteMessage<long> message, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(message, BitConverter.GetBytes, cancellationToken);
 
-    public Task<ByteMessage<long>> ReceiveLongAsync(CancellationToken cancellationToken = default) =>
-        _byteTransferManagerAsync.ReceiveAsync(bytes => BitConverter.ToInt64(bytes), cancellationToken);
+    public async Task<ByteMessage<long>> ReceiveLongAsync(CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.ReceiveAsync(bytes => BitConverter.ToInt64(bytes), cancellationToken);
 
-    public Task SendEmptyMessageAsync(ByteMessageType type, CancellationToken cancellationToken = default) =>
-        _byteTransferManagerAsync.SendAsync(new ByteMessage<byte[]>
+    public async Task SendEmptyMessageAsync(ByteMessageType type, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(new ByteMessage<byte[]>
         {
             Type = type,
             Data = Array.Empty<byte>()
