@@ -83,7 +83,6 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
    {
       if (_disposed) return;
 
-
       _socket.Dispose();
 
       _disposed = true;
@@ -137,44 +136,6 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
       };
    }
 
-   private async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
-   {
-      var sent = await _socket.SendAsync(header.ToBytes(), SocketFlags.None, cancellationToken);
-
-      cancellationToken.ThrowIfCancellationRequested();
-      if (sent != Header.Size) throw new IOException("Failed to send all bytes");
-   }
-
-   private async Task<Header> ReceiveHeaderAsync(CancellationToken cancellationToken = default)
-   {
-      var buffer = new byte[Header.Size];
-      var received = await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
-
-      cancellationToken.ThrowIfCancellationRequested();
-      if (received != Header.Size) throw new IOException("Failed to receive all expected bytes");
-
-      return Header.FromBytes(buffer);
-   }
-
-   private async Task SendDataAsync(byte[] data, CancellationToken cancellationToken = default)
-   {
-      var sent = await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
-
-      cancellationToken.ThrowIfCancellationRequested();
-      if (sent != data.Length) throw new IOException("Failed to send all bytes");
-   }
-
-   private async Task<byte[]> ReceiveDataAsync(long dataSize, CancellationToken cancellationToken = default)
-   {
-      var buffer = new byte[dataSize];
-      var received = await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
-
-      cancellationToken.ThrowIfCancellationRequested();
-      if (received != dataSize) throw new IOException("Failed to receive all expected bytes");
-
-      return buffer;
-   }
-
    private async Task SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
    {
       await SendHeaderAsync(message.Header, cancellationToken);
@@ -195,5 +156,56 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
          Data = data,
          Header = header
       };
+   }
+
+   private async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
+      => await SendRawDataAsync(header.ToBytes(), cancellationToken);
+
+   private async Task<Header> ReceiveHeaderAsync(CancellationToken cancellationToken = default)
+   {
+      var headerBytes = await ReceiveRawDataAsync(Header.Size, cancellationToken);
+      cancellationToken.ThrowIfCancellationRequested();
+
+      return Header.FromBytes(headerBytes);
+   }
+
+   private async Task SendDataAsync(byte[] data, CancellationToken cancellationToken = default) =>
+      await SendRawDataAsync(data, cancellationToken);
+
+   private async Task<byte[]> ReceiveDataAsync(long dataSize, CancellationToken cancellationToken = default)
+      => await ReceiveRawDataAsync(dataSize, cancellationToken);
+
+   // This method works with the assumption that the entire data array is to be sent
+   private async Task SendRawDataAsync(byte[] data, CancellationToken cancellationToken = default)
+   {
+      var sent = 0;
+      while (sent < data.Length)
+      {
+         var toSend = data.Length - sent;
+         var currentSent = await _socket.SendAsync(new ArraySegment<byte>(data, sent, toSend), cancellationToken);
+
+         if (currentSent == 0) throw new IOException("Remote connection closed");
+
+         sent += currentSent;
+      }
+   }
+
+   private async Task<byte[]> ReceiveRawDataAsync(long size, CancellationToken cancellationToken = default)
+   {
+      var received = 0;
+      var data = new byte[size];
+
+      while(received < size)
+      {
+         var toReceive = size - received;
+         var currentReceived = await _socket.ReceiveAsync(new ArraySegment<byte>(data, received, (int)toReceive), cancellationToken);
+
+         if (currentReceived == 0) throw new IOException("Remote connection closed");
+
+         received += currentReceived;
+      }
+
+
+      return data;
    }
 }
