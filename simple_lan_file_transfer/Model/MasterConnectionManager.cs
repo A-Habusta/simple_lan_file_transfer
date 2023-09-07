@@ -50,8 +50,8 @@ public sealed class MasterConnectionManager
 
     private static void SetSocketBufferSizes(Socket socket)
     {
-        socket.SendBufferSize = Utility.BlockSize;
-        socket.ReceiveBufferSize = Utility.BlockSize;
+        socket.SendBufferSize = Utility.BufferSize;
+        socket.ReceiveBufferSize = Utility.BufferSize;
     }
 }
 
