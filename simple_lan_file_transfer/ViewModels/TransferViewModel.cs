@@ -1,6 +1,5 @@
 using ReactiveUI;
 using Avalonia.Media;
-using MsBox.Avalonia;
 using MsBox.Avalonia.Enums;
 using Avalonia.Platform.Storage;
 using System.Security.Cryptography;
@@ -297,13 +296,7 @@ public partial class TransferViewModel
             const string title = "File already exists";
             var message = fileName + " already exists. Do you want to overwrite it?";
 
-            var messageBoxManager = MessageBoxManager.GetMessageBoxStandard(
-                title,
-                message,
-                ButtonEnum.YesNoAbort,
-                Icon.Warning);
-
-            return await ShowPopup(messageBoxManager);
+            return await ShowPopup(message, title, ButtonEnum.YesNoAbort, Icon.Info);
         }
 
         private static async Task<FileCarrier> GetCorrectMetadataAndDataFileAsync(
@@ -407,13 +400,7 @@ public partial class TransferViewModel
             const string title = "Transfer confirmation";
             var message = $"Do you want to receive {fileName} from {ip}?";
 
-            var messageBoxManager = MessageBoxManager.GetMessageBoxStandard(
-                title,
-                message,
-                ButtonEnum.YesNo,
-                Icon.Info);
-
-            ButtonResult result = await ShowPopup(messageBoxManager);
+            ButtonResult result = await ShowPopup(message, title, ButtonEnum.YesNo, Icon.Info);
 
             if (result == ButtonResult.No)
             {

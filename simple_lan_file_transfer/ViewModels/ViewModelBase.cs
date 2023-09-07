@@ -1,24 +1,27 @@
 ﻿using ReactiveUI;
 using MsBox.Avalonia;
-using MsBox.Avalonia.Base;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using MsBox.Avalonia.Enums;
 
 namespace simple_lan_file_transfer.ViewModels;
 
 public class ViewModelBase : ReactiveObject
 {
-    // No need to use dispatcher, the internals of messagebox already do that
-    protected static async Task ShowPopup(string message)
+    // We need to use Dispatcher.UIThread.InvokeAsync to show the popup
+    protected static async Task<ButtonResult> ShowPopup(
+        string message,
+        string title = "Error",
+        ButtonEnum buttonEnum = ButtonEnum.Ok,
+        Icon icon = Icon.Error,
+        WindowStartupLocation windowStartupLocation = WindowStartupLocation.CenterScreen
+        )
     {
-        var messageBox = MessageBoxManager.GetMessageBoxStandard(
-            title: "Error",
-            text: message,
-            ButtonEnum.OkCancel);
-        await ShowPopup(messageBox);
-    }
-
-    protected static async Task<ButtonResult> ShowPopup(IMsBox<ButtonResult> messageBox)
-    {
-        return await messageBox.ShowAsync();
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var popup = MessageBoxManager.GetMessageBoxStandard(title, message, buttonEnum,
+                icon, windowStartupLocation);
+            return await popup.ShowAsync();
+        });
     }
 }
