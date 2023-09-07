@@ -9,6 +9,8 @@ namespace simple_lan_file_transfer.ViewModels;
 
 public partial class TransferViewModel : ViewModelBase
 {
+    private const string FailedText = "Transfer failed";
+
     private static readonly IBrush ProgressBarColorRunning = Brushes.CornflowerBlue;
     private static readonly IBrush ProgressBarColorPaused = Brushes.Gray;
 
@@ -35,6 +37,13 @@ public partial class TransferViewModel : ViewModelBase
     {
         get => _isPaused;
         set => this.RaiseAndSetIfChanged(ref _isPaused, value);
+    }
+
+    private bool _isFailed;
+    public bool IsFailed
+    {
+        get => _isFailed;
+        set => this.RaiseAndSetIfChanged(ref _isFailed, value);
     }
 
     private double _progress;
@@ -75,18 +84,6 @@ public partial class TransferViewModel : ViewModelBase
         SetUserInterfaceElementsToPauseMode();
     }
 
-    public void RemoveTransferFromTab()
-    {
-        _selfRemover?.Invoke(this);
-        _fileAccessManager.Dispose();
-        _networkTransferManager.Dispose();
-
-        _transferFile.Dispose();
-        _metadataFile?.Dispose();
-
-        _pauseTokenSource?.Dispose();
-    }
-
     public async Task StartTransferAsync()
     {
         _pauseTokenSource = new CancellationTokenSource();
@@ -111,6 +108,8 @@ public partial class TransferViewModel : ViewModelBase
                                        or InvalidPasswordException or RemoteTransferCancelledException)
         {
             await ShowPopup(ex.Message);
+            IsFailed = true;
+            ProgressFormatString = FailedText;
         }
 
         await OnTransferFinishAsync();
@@ -128,6 +127,19 @@ public partial class TransferViewModel : ViewModelBase
         await _metadataFile!.DeleteAsync();
     }
 
+    private void RemoveTransferFromTab()
+    {
+        _selfRemover?.Invoke(this);
+        _fileAccessManager.Dispose();
+        _networkTransferManager.Dispose();
+
+        _transferFile.Dispose();
+        _metadataFile?.Dispose();
+
+        _pauseTokenSource?.Dispose();
+    }
+
+
     private TransferViewModel(FileBlockAccessManager fileAccessManager, NetworkTransferManagerAsync networkTransferManager,
         TransferDirection direction, IStorageFile transferFile, IStorageFile? metadataFile = null)
     {
@@ -143,7 +155,7 @@ public partial class TransferViewModel : ViewModelBase
         var dividedFileSize = Utility.DivideNumberToFitSuffix(_fileAccessManager.FileSize, _byteSuffix);
 
         _defaultFormatString =
-            $"{{0}} {_byteSuffix} / {dividedFileSize:F2} {_byteSuffix}";
+            $"{{0:F2}} {_byteSuffix} / {dividedFileSize:F2} {_byteSuffix}";
 
         FileSizeWithSuffix = dividedFileSize;
 
