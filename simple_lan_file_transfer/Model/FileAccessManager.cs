@@ -57,6 +57,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
         if (!_fileStream.CanSeek) return false;
 
         _fileStream.Seek(block * Utility.BlockSize, SeekOrigin.Begin);
+        LastProcessedBlock = block;
 
         return _fileStream.Position == _fileStream.Length;
     }
