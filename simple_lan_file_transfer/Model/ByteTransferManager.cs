@@ -1,38 +1,37 @@
 namespace simple_lan_file_transfer.Models;
 
-
-
-public enum ByteMessageType
+public enum MessageType
 {
    Metadata,
    Data,
    EndOfTransfer
 }
 
-public readonly struct ByteMessage<T>
+public readonly struct ReceiveResult<T>
 {
    public T Data { get; init; }
-   public ByteMessageType Type { get; init; }
+   public MessageType Type { get; init; }
 }
 
 public interface IByteSenderAsync
 {
-   ValueTask SendAsync<T>(
-      ByteMessage<T> byteMessage,
-      Func<T, byte[]> dataToBytes,
+   Task SendAsync<T>(
+      MessageType type,
+      T data,
+      Func<T, ReadOnlyMemory<byte>?> dataToBytes,
       CancellationToken cancellationToken = default);
-   
-   ValueTask SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
-      SendAsync(message, data => data, cancellationToken);
+
+   Task SendAsync(MessageType type, ReadOnlyMemory<byte> data = default, CancellationToken cancellationToken = default) =>
+      SendAsync(type, data , x => x, cancellationToken);
 }
 
 public interface IByteReceiverAsync
 {
-   ValueTask<ByteMessage<T>> ReceiveAsync<T>(
-      Func<byte[], T> bytesToData,
+   Task<ReceiveResult<T>> ReceiveAsync<T>(
+      Func<ReadOnlyMemory<byte>, T> bytesToData,
       CancellationToken cancellationToken = default);
-   
-   ValueTask<ByteMessage<byte[]>> ReceiveAsync(CancellationToken cancellationToken = default) =>
+
+   Task<ReceiveResult<ReadOnlyMemory<byte>>> ReceiveAsync(CancellationToken cancellationToken = default) =>
       ReceiveAsync(data => data, cancellationToken);
 }
 
@@ -42,150 +41,117 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
 {
    private readonly struct Header
    {
-      public const int Size = sizeof(byte) + sizeof(long);
-      
+      public const int Size = sizeof(byte) + sizeof(int);
+
       private readonly byte _type;
-      public ByteMessageType Type
+      public MessageType Type
       {
-         get => (ByteMessageType)_type;
+         get => (MessageType)_type;
          init => _type = (byte)value;
       }
-      
-      public long DataSize { get; init; }
-      
-      public byte[] ToBytes()
+
+      public int DataSize { get; init; }
+
+      public ReadOnlyMemory<byte> ToBytes()
       {
          var bytes = new byte[Size];
          bytes[0] = _type;
-         BitConverter.TryWriteBytes(bytes.AsSpan(1, 8), DataSize);
-         return bytes;
+         BitConverter.TryWriteBytes(bytes.AsSpan(1, sizeof(int)), DataSize);
+         return new ReadOnlyMemory<byte>(bytes);
       }
-      
-      public static Header FromBytes(byte[] bytes)
+
+      public static Header FromBytes(ReadOnlyMemory<byte> bytes)
       {
          return new Header
          {
-            Type = (ByteMessageType)bytes[0],
-            DataSize = BitConverter.ToInt64(bytes.AsSpan(1, 8))
+            Type = (MessageType) bytes.Span[0],
+            DataSize = BitConverter.ToInt32(bytes.Slice(1, sizeof(int)).Span)
          };
       }
    }
-   
+
    private readonly struct FullMessage
    {
       public Header Header { get; init; }
-      public byte[] Data { get; init; }
+      public ReadOnlyMemory<byte> Data { get; init; }
    }
-   
+
    private bool _disposed;
-   
-   public void Dispose()
-   {
-      if (_disposed) return;
-      
-     
-      _socket.Dispose();
-      
-      _disposed = true;
-   }
-   
+
    private readonly Socket _socket;
-   
+   private readonly byte[] _buffer = new byte[Utility.BlockSize];
+
    public NetworkTransferManagerAsync(Socket socket)
    {
       _socket = socket;
    }
 
-   public async ValueTask SendAsync<T>(
-      ByteMessage<T> byteMessage,
-      Func<T, byte[]> dataToBytes,
+   public async Task SendAsync<T>(
+      MessageType type,
+      T data,
+      Func<T, ReadOnlyMemory<byte>?> dataToBytes,
       CancellationToken cancellationToken = default)
    {
       if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManagerAsync));
       cancellationToken.ThrowIfCancellationRequested();
-      
-      var buffer = dataToBytes(byteMessage.Data);
+
+      var convertedData = dataToBytes(data) ?? ReadOnlyMemory<byte>.Empty;
       var header = new Header
       {
-         Type = byteMessage.Type,
-         DataSize = buffer.Length
+         Type = type,
+         DataSize = convertedData.Length
       };
 
       var fullMessage = new FullMessage
       {
          Header = header,
-         Data = buffer
+         Data = convertedData
       };
 
       await SendFullMessageAsync(fullMessage, cancellationToken);
    }
-   
-   public async ValueTask<ByteMessage<T>> ReceiveAsync<T>(
-      Func<byte[], T> bytesToData,
+
+   public async Task<ReceiveResult<T>> ReceiveAsync<T>(
+      Func<ReadOnlyMemory<byte>, T> bytesToData,
       CancellationToken cancellationToken = default)
    {
       if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManagerAsync));
       cancellationToken.ThrowIfCancellationRequested();
-      
+
       FullMessage fullMessage = await ReceiveFullMessageAsync(cancellationToken);
       cancellationToken.ThrowIfCancellationRequested();
 
-      return new ByteMessage<T>
+      return new ReceiveResult<T>
       {
          Data = bytesToData(fullMessage.Data),
          Type = fullMessage.Header.Type
       };
    }
 
-   private async ValueTask SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
+   public void Dispose()
    {
-      var sent = await _socket.SendAsync(header.ToBytes(), SocketFlags.None, cancellationToken);
-      
-      cancellationToken.ThrowIfCancellationRequested();
-      if (sent != Header.Size) throw new IOException("Failed to send all bytes");
+      if (_disposed) return;
+
+      _socket.Dispose();
+
+      _disposed = true;
    }
-   
-   private async ValueTask<Header> ReceiveHeaderAsync(CancellationToken cancellationToken = default)
-   {
-      var buffer = new byte[Header.Size];
-      var received = await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
-      
-      cancellationToken.ThrowIfCancellationRequested();
-      if (received != Header.Size) throw new IOException("Failed to receive all expected bytes");
-      
-      return Header.FromBytes(buffer);
-   }
-   
-   private async ValueTask SendDataAsync(byte[] data, CancellationToken cancellationToken = default)
-   {
-      var sent = await _socket.SendAsync(data, SocketFlags.None, cancellationToken);
-      
-      cancellationToken.ThrowIfCancellationRequested();
-      if (sent != data.Length) throw new IOException("Failed to send all bytes");
-   }
-   
-   private async ValueTask<byte[]> ReceiveDataAsync(long dataSize, CancellationToken cancellationToken = default)
-   {
-      var buffer = new byte[dataSize];
-      var received = await _socket.ReceiveAsync(buffer, SocketFlags.None, cancellationToken);
-      
-      cancellationToken.ThrowIfCancellationRequested();
-      if (received != dataSize) throw new IOException("Failed to receive all expected bytes");
-      
-      return buffer;
-   }
-   
-   private async ValueTask SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
+
+   private async Task SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
    {
       await SendHeaderAsync(message.Header, cancellationToken);
+      if (message.Header.DataSize == 0) return;
+
       await SendDataAsync(message.Data, cancellationToken);
    }
-   
-   private async ValueTask<FullMessage> ReceiveFullMessageAsync(CancellationToken cancellationToken = default)
+
+   private async Task<FullMessage> ReceiveFullMessageAsync(CancellationToken cancellationToken = default)
    {
       Header header = await ReceiveHeaderAsync(cancellationToken);
-      var data = await ReceiveDataAsync(header.DataSize, cancellationToken);
-      
+
+      var data = header.DataSize > 0 ? await ReceiveDataAsync(header.DataSize, cancellationToken)
+                                                        : ReadOnlyMemory<byte>.Empty;
+
       cancellationToken.ThrowIfCancellationRequested();
 
       return new FullMessage
@@ -194,4 +160,58 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
          Header = header
       };
    }
+
+   private async Task SendHeaderAsync(Header header, CancellationToken cancellationToken = default)
+      => await SendRawDataAsync(header.ToBytes(), cancellationToken);
+
+   private async Task<Header> ReceiveHeaderAsync(CancellationToken cancellationToken = default)
+   {
+      var headerBytes = await ReceiveRawDataAsync(Header.Size, cancellationToken);
+      cancellationToken.ThrowIfCancellationRequested();
+
+      return Header.FromBytes(headerBytes);
+   }
+
+   private async Task SendDataAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) =>
+      await SendRawDataAsync(data, cancellationToken);
+
+   private async Task<ReadOnlyMemory<byte>> ReceiveDataAsync(int dataSize, CancellationToken cancellationToken = default)
+      => await ReceiveRawDataAsync(dataSize, cancellationToken);
+
+   // This method works with the assumption that the entire data array is to be sent
+   private async Task SendRawDataAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+   {
+      var sent = 0;
+      while (sent < data.Length)
+      {
+         var toSend = data.Length - sent;
+         var currentSent = await _socket.SendAsync(data.Slice(sent, toSend), cancellationToken);
+
+         if (currentSent == 0) throw new IOException("Remote connection closed");
+
+         sent += currentSent;
+      }
+   }
+
+   private async Task<ReadOnlyMemory<byte>> ReceiveRawDataAsync(int size, CancellationToken cancellationToken = default)
+   {
+      if (size > _buffer.Length)
+      {
+         throw new ArgumentOutOfRangeException(nameof(size), "Trying to receive more data than a single block");
+      }
+
+      var received = 0;
+      while(received < size)
+      {
+         var toReceive = size - received;
+         var currentReceived = await _socket.ReceiveAsync(_buffer.AsMemory(received, toReceive), cancellationToken);
+
+         if (currentReceived == 0) throw new IOException("Remote connection closed");
+
+         received += currentReceived;
+      }
+
+      return new ReadOnlyMemory<byte>(_buffer, 0, size);
+   }
+
 }

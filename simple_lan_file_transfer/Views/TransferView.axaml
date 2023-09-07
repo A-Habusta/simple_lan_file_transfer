@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:vm="clr-namespace:simple_lan_file_transfer.ViewModels"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="400"
+             x:Class="simple_lan_file_transfer.Views.TransferView"
+             x:DataType="vm:TransferViewModel">
+    <StackPanel HorizontalAlignment="Stretch">
+        <TextBlock Text="{Binding Name, Mode=OneTime}"/>
+        <ProgressBar
+            ShowProgressText="True"
+            Value="{Binding Progress}"
+            Maximum="{Binding FileSizeWithSuffix}"
+            Minimum="0"
+            ProgressTextFormat="{Binding ProgressFormatString}"
+            Foreground="{Binding ProgressBarColor}"
+            Margin="3"/>
+        <DockPanel Margin="3" HorizontalAlignment="Stretch">
+            <Button Command="{Binding StartTransferAsync}" DockPanel.Dock="Left">
+                <Button.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <MultiBinding.Bindings>
+                            <Binding Path="!IsFailed"/>
+                            <Binding Path="IsPaused"/>
+                        </MultiBinding.Bindings>
+                    </MultiBinding>
+                </Button.IsVisible>
+                Resume
+            </Button>
+            <Button Command="{Binding TerminateTransfer}" DockPanel.Dock="Left">
+                <Button.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                        <MultiBinding.Bindings>
+                            <Binding Path="IsFailed"/>
+                            <Binding Path="IsPaused"/>
+                        </MultiBinding.Bindings>
+                    </MultiBinding>
+                </Button.IsVisible>
+                Terminate
+            </Button>
+            <Button Command="{Binding PauseTransfer}" DockPanel.Dock="Right">
+                <Button.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <MultiBinding.Bindings>
+                            <Binding Path="!IsFailed"/>
+                            <Binding Path="!IsPaused"/>
+                        </MultiBinding.Bindings>
+                    </MultiBinding>
+                </Button.IsVisible>
+                Pause
+            </Button>
+        </DockPanel>
+
+    </StackPanel>
+</UserControl>

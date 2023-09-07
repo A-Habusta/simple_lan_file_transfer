@@ -1,14 +1,124 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:simple_lan_file_transfer.Views"
+             xmlns:vm="clr-namespace:simple_lan_file_transfer.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="clr-namespace:simple_lan_file_transfer.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="1000"
              x:Class="simple_lan_file_transfer.Views.MainView"
              x:DataType="vm:MainViewModel">
-  <Design.DataContext>
+
+    <Design.DataContext>
     <!-- This only sets the DataContext for the previewer in an IDE,
          to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-    <vm:MainViewModel />
-  </Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+    <TabControl HorizontalContentAlignment="Center" HorizontalAlignment="Center">
+        <TabItem Header="Actions">
+            <StackPanel Margin="5" >
+                <Grid ColumnDefinitions="20,150,150,20" RowDefinitions="Auto, Auto" HorizontalAlignment="Center">
+                    <Button Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                        Click="StartNewTransfer"
+                        HorizontalAlignment="Center"
+                        > Start Transfer </Button>
+                    <TextBox Grid.Row="0" Grid.Column="1"
+                        Name="TextBoxTargetIp"
+                        Watermark="Target IP"
+                        AcceptsReturn="False"
+                        AcceptsTab="False"
+                        TextWrapping="NoWrap"
+                        MaxLines="1"/>
+                    <TextBox Grid.Row="0" Grid.Column="2"
+                        Name="TextBoxOutboundPassword"
+                        Watermark="Password"
+                        AcceptsReturn="False"
+                        AcceptsTab="False"
+                        TextWrapping="NoWrap"
+                        PasswordChar="#"
+                        RevealPassword="{Binding ElementName=RevealOutboundPasswordCheckbox, Path=IsChecked}"
+                        MaxLines="1"/>
+                    <CheckBox Grid.Row="0" Grid.Column="3" Name="RevealOutboundPasswordCheckbox"/>
+                </Grid>
+
+                <TextBlock Name="Spacer1"/>
+
+                <Grid ColumnDefinitions="20,150,20" RowDefinitions="Auto, Auto" HorizontalAlignment="Center">
+                    <CheckBox Grid.Row="0" Grid.Column="2"
+                        Name="RevealInboundPasswordCheckbox"/>
+                    <TextBox Grid.Row="0" Grid.Column="1"
+                        Name="TextBoxInboundPassword"
+                        Watermark="Local Password"
+                        AcceptsReturn="False"
+                        AcceptsTab="False"
+                        TextWrapping="NoWrap"
+                        PasswordChar="#"
+                        RevealPassword="{Binding ElementName=RevealInboundPasswordCheckbox, Path=IsChecked}"
+                        MaxLines="1"/>
+                    <Button Grid.Row="1" Grid.Column="1"
+                        HorizontalAlignment="Center"
+                        Command="{Binding SaveNewPassword}"
+                        CommandParameter="{Binding ElementName=TextBoxInboundPassword, Path=Text}">
+
+                        Save Password
+                    </Button>
+                </Grid>
+
+                <TextBlock Name="Spacer2"/>
+
+                <Button Command="{Binding OpenNewReceiveFolder}" HorizontalAlignment="Center">
+                    Open New Receive Folder
+                </Button>
+            </StackPanel>
+        </TabItem>
+        <TabItem Header="Transfers">
+            <TabControl HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                ItemsSource="{Binding TabConnections}">
+                <TabControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding TabName}"/>
+                    </DataTemplate>
+                </TabControl.ItemTemplate>
+                <TabControl.ContentTemplate>
+                    <DataTemplate DataType="vm:ConnectionTabViewModel">
+                        <v:SingleConnectionTabView DataContext="{Binding }"/>
+                    </DataTemplate>
+                </TabControl.ContentTemplate>
+            </TabControl>
+        </TabItem>
+
+
+        <TabItem Header="Discovery">
+            <StackPanel>
+                <Grid ColumnDefinitions="Auto,20,Auto" RowDefinitions="Auto" HorizontalAlignment="Center">
+                    <ToggleButton Grid.Column="0"
+                         Command="{Binding ChangeBroadcastListenState}"
+                         CommandParameter="{Binding RelativeSource={RelativeSource Self}, Path=IsChecked}"
+                         Width="80"
+                         HorizontalContentAlignment="Center">
+                        Listen
+                    </ToggleButton>
+                    <ToggleButton Grid.Column="2"
+                         Command="{Binding ChangeBroadcastTransmitState}"
+                         CommandParameter="{Binding RelativeSource={RelativeSource Self}, Path=IsChecked}"
+                         Width="80"
+                         HorizontalContentAlignment="Center">
+                        Transmit
+                    </ToggleButton>
+                </Grid>
+
+                <TextBlock/>
+
+                <ItemsControl ItemsSource="{Binding AvailableIpAddresses}" HorizontalAlignment="Center">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="x:String">
+                            <Button
+                                Content="{Binding}"
+                                Click="ChangeIpAddressFieldText"
+                                Background="Transparent"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </TabItem>
+    </TabControl>
 </UserControl>

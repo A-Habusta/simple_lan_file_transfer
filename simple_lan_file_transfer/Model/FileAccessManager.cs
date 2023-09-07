@@ -4,21 +4,23 @@ using System.Runtime.CompilerServices;
 namespace simple_lan_file_transfer.Models;
 
 
-public interface IBlockSequentialReader 
+public interface IBlockSequentialReader
 {
-    byte[] ReadNextBlock();
+    ReadOnlyMemory<byte> ReadNextBlock();
 }
 
 public interface IBlockSequentialWriter
 {
-    void WriteNextBlock(byte[] data);
+    void WriteNextBlock(ReadOnlySpan<byte> data);
 }
 
 public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSequentialWriter, INotifyPropertyChanged, IDisposable
 {
+    private byte[] _buffer = new byte[Utility.BufferSize];
+
     private bool _disposed;
-    private readonly FileStream _fileStream;
-    private readonly MetadataHandler _metadataHandler;
+    private readonly Stream _fileStream;
+    private readonly MetadataWriter? _metadataWriter;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -32,181 +34,168 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
         OnPropertyChanged(propertyName);
     }
 
-    private long _lastProcessedBlock;
-    public long LastProcessedBlock
+    private int _lastProcessedBlock;
+    public int LastProcessedBlock
     {
         get => _lastProcessedBlock;
         private set => SetProperty(ref _lastProcessedBlock, value);
     }
-    
-    public long FileBlocksCount { get; }
 
-    public FileBlockAccessManager(FileStream fileStream, MetadataHandler metadataHandler)
+    public int FileSize { get; init; }
+
+    public FileBlockAccessManager(Stream fileStream, int fileSize, MetadataWriter? metadataWriter = default)
     {
         _fileStream = fileStream;
-        FileBlocksCount = CalculateFileBlockCount(_fileStream.Length);
-        
-        _metadataHandler = metadataHandler;
+        FileSize = fileSize;
+
+        _metadataWriter = metadataWriter;
     }
-    
-    public bool SeekToBlock(long block)
+
+    public bool SeekToBlock(int block)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
-    
+        if (!_fileStream.CanSeek) return false;
+
         _fileStream.Seek(block * Utility.BlockSize, SeekOrigin.Begin);
-        
+
         return _fileStream.Position == _fileStream.Length;
     }
-    
-    public byte[] ReadNextBlock()
+
+    public ReadOnlyMemory<byte> ReadNextBlock()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
-        
-        var block = new byte[Utility.BlockSize];
+
+        var read = _fileStream.Read(_buffer);
+        var block = new ReadOnlyMemory<byte>(_buffer, 0, read);
+
         IncrementBlockCounter();
 
         return block;
     }
-    
-    public void WriteNextBlock(byte[] block)
+
+    public void WriteNextBlock(ReadOnlySpan<byte> block)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
-        
+
         _fileStream.Write(block);
+
         SaveAndIncrementBlockCounter();
     }
 
     public void Dispose()
     {
         if (_disposed) return;
-        
+
         _fileStream.Dispose();
-        _metadataHandler.Dispose();
-        
+        _metadataWriter?.Dispose();
+
         _disposed = true;
     }
-    
+
     private void IncrementBlockCounter()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
-        
+
         ++LastProcessedBlock;
     }
-    
+
     private void SaveAndIncrementBlockCounter()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
-        
-        _metadataHandler.WriteLastBlockProcessed(LastProcessedBlock);
-        IncrementBlockCounter();
-    }
 
-    private static long CalculateFileBlockCount(long fileSize)
-    {
-        return (long) Math.Ceiling(fileSize / (double) Utility.BlockSize);
+        _metadataWriter?.WriteLastBlockProcessed(LastProcessedBlock);
+        IncrementBlockCounter();
     }
 }
 
-public sealed class MetadataHandler : IDisposable
+public sealed class MetadataReader : IDisposable
 {
-    public static class MetadataHandlerFactory
-    {
-        public static MetadataHandler CreateMetadataHandler(string metadataFilePath)
-        {
-            FileStream metadataFileStream = OpenMetadataFile(metadataFilePath);
-            MetadataHandler metadataHandler = new(metadataFileStream);
-            return metadataHandler;
-        }
-        private static FileStream OpenMetadataFile(string filePath)
-        {
-            return !File.Exists(filePath) ? CreateNewMetadataFile(filePath) : OpenExistingMetadataFile(filePath);
-        }
-        
-        private static FileStream CreateNewMetadataFile(string metadataFilePath)
-        {
-            return File.Create(metadataFilePath);
-        }
-        
-        private static FileStream OpenExistingMetadataFile(string metadataFilePath)
-        {
-            return File.Open(metadataFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        }
-    }
-    
     private bool _disposed;
-    private readonly FileStream _metadataFileStream;
+    private readonly Stream _metadataFileStream;
 
-    private MetadataHandler(FileStream metadataFile)
+    public MetadataReader(Stream metadataFile)
     {
         _metadataFileStream = metadataFile;
-        
-        WriteLastBlockProcessed(0);
-        WriteFileName(string.Empty);
     }
-    
-    public long ReadFileLastWrittenBlock()
+
+    public int ReadFileLastWrittenBlock()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
-        
-        var block = new byte[sizeof(long)];
-        
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
+
+        var block = new byte[sizeof(int)];
+
         _metadataFileStream.Seek(0, SeekOrigin.Begin);
         var read = _metadataFileStream.Read(block);
 
-        if (read != sizeof(long)) throw new IOException("Read less bytes than expected");
-        
-        return BitConverter.ToInt64(block);
+        if (read != sizeof(int)) throw new IOException("Read less bytes than expected");
+
+        return BitConverter.ToInt32(block);
     }
-    
+
     public string ReadFileName()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
-        
-        var fileName = new byte[_metadataFileStream.Length - sizeof(long)];
-        
-        _metadataFileStream.Seek(sizeof(long), SeekOrigin.Begin);
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
+
+        var fileName = new byte[_metadataFileStream.Length - sizeof(int)];
+
+        _metadataFileStream.Seek(sizeof(int), SeekOrigin.Begin);
         var read = _metadataFileStream.Read(fileName);
 
         if (read != fileName.Length) throw new IOException("Read less bytes than expected");
-        
+
         return Encoding.UTF8.GetString(fileName);
     }
-    
-    public void WriteLastBlockProcessed(long block)
+
+    public void Dispose()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
-        
+        if (_disposed) return;
+
+        _metadataFileStream.Dispose();
+
+        _disposed = true;
+    }
+
+}
+public sealed class MetadataWriter : IDisposable
+{
+    private bool _disposed;
+    private readonly Stream _metadataFileStream;
+
+    public MetadataWriter(Stream metadataFile)
+    {
+        _metadataFileStream = metadataFile;
+
+        WriteLastBlockProcessed(0);
+        WriteFileName(string.Empty);
+    }
+
+    public void WriteLastBlockProcessed(int block)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
+
         _metadataFileStream.Seek(0, SeekOrigin.Begin);
         _metadataFileStream.Write(BitConverter.GetBytes(block));
         _metadataFileStream.Flush();
     }
-    
+
     public void WriteFileName(string fileName)
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(MetadataHandler));
-        
+        if (_disposed) throw new ObjectDisposedException(nameof(MetadataWriter));
+
         // Truncate file to new size
-        _metadataFileStream.SetLength(sizeof(long) + fileName.Length);
-        
-        _metadataFileStream.Seek(sizeof(long), SeekOrigin.Begin);
+        _metadataFileStream.SetLength(sizeof(int) + fileName.Length);
+
+        _metadataFileStream.Seek(sizeof(int), SeekOrigin.Begin);
         _metadataFileStream.Write(Encoding.UTF8.GetBytes(fileName));
         _metadataFileStream.Flush();
     }
-    
-    public void DeleteMetadataFile()
-    {
-        var metadataFilePath = _metadataFileStream.Name;
-        
-        _metadataFileStream.Close();
-        File.Delete(metadataFilePath);
-    }
-    
+
     public void Dispose()
     {
         if (_disposed) return;
-        
+
         _metadataFileStream.Dispose();
-        
+
         _disposed = true;
     }
 }
