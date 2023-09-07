@@ -18,7 +18,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 {
     private bool _disposed;
     private readonly Stream _fileStream;
-    private readonly MetadataWriter? _metadataHandler;
+    private readonly MetadataWriter? _metadataWriter;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -41,20 +41,18 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
 
     public long FileSize { get; init; }
 
-    public FileBlockAccessManager(Stream fileStream, long fileSize, MetadataWriter? metadataHandler = default)
+    public FileBlockAccessManager(Stream fileStream, long fileSize, MetadataWriter? metadataWriter = default)
     {
-        if (!fileStream.CanSeek)
-            throw new ArgumentException("Stream must support seek", nameof(fileStream));
-
         _fileStream = fileStream;
         FileSize = fileSize;
 
-        _metadataHandler = metadataHandler;
+        _metadataWriter = metadataWriter;
     }
 
     public bool SeekToBlock(long block)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
+        if (_fileStream.CanSeek) return false;
 
         _fileStream.Seek(block * Utility.BlockSize, SeekOrigin.Begin);
 
@@ -80,6 +78,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
 
         _fileStream.Write(block);
+
         SaveAndIncrementBlockCounter();
     }
 
@@ -88,7 +87,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
         if (_disposed) return;
 
         _fileStream.Dispose();
-        _metadataHandler?.Dispose();
+        _metadataWriter?.Dispose();
 
         _disposed = true;
     }
@@ -103,9 +102,8 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
     private void SaveAndIncrementBlockCounter()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
-        if (_metadataHandler is null) throw new InvalidOperationException("MetadataHandler is null");
 
-        _metadataHandler.WriteLastBlockProcessed(LastProcessedBlock);
+        _metadataWriter?.WriteLastBlockProcessed(LastProcessedBlock);
         IncrementBlockCounter();
     }
 }
