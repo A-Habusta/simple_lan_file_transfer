@@ -80,7 +80,7 @@ public sealed class StorageFolderWrapper : IDisposable
     }
 
     public async Task<FileExistsResults> FileExistsAsync(string fileName, bool saveItemIfFound = false)
-        => (await FilesExistAsync(new List<string> {fileName}, saveItemIfFound)).First();
+        => (await FilesExistAsync(new List<string> {fileName}, saveItemIfFound)).FirstOrDefault();
 
     public async Task<IList<FileExistsResults>> FilesExistAsync(IList<string> fileNames, bool saveItemsIfFound = false)
     {
@@ -114,7 +114,10 @@ public sealed class StorageFolderWrapper : IDisposable
 
         FileExistsResults result = await FileExistsAsync(folderName, saveItemIfFound: true);
 
-        if (!result.Exists) return await CreateSubFolderAsync(folderName);
+        if (!result.Exists)
+        {
+            return await CreateSubFolderAsync(folderName);
+        }
         if (result.Item is IStorageFolder folder)
         {
             return new StorageFolderWrapper(folder);
