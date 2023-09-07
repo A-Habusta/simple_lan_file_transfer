@@ -91,6 +91,19 @@ public readonly struct ByteTransferManagerInterfaceWrapper
 
     public Task<ByteMessage<long>> ReceiveLongAsync(CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.ReceiveAsync(bytes => BitConverter.ToInt64(bytes), cancellationToken);
+
+    public Task SendEmptyMessageAsync(ByteMessageType type, CancellationToken cancellationToken = default) =>
+        _byteTransferManagerAsync.SendAsync(new ByteMessage<byte[]>
+        {
+            Type = type
+        }, cancellationToken);
+
+    public async Task<ByteMessageType> ReceiveEmptyMessageAsync(CancellationToken cancellationToken = default)
+    {
+        var message = await _byteTransferManagerAsync.ReceiveAsync(cancellationToken);
+        return message.Type;
+    }
+
 }
 
 public readonly struct FileMetadata
@@ -125,12 +138,12 @@ public readonly struct ReceiverParameterCommunicationManager
 
         if (actualPassword != string.Empty && actualPassword != passwordMessage.Data)
         {
-            await _byteTransferManager.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
+            await _byteTransferManager.SendEmptyMessageAsync(ByteMessageType.EndOfTransfer, cancellationToken);
             throw new InvalidPasswordException("Received password was incorrect.");
         }
 
         // Blank message to indicate password was correct/no password is required
-        await _byteTransferManager.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.Metadata }, cancellationToken);
+        await _byteTransferManager.SendEmptyMessageAsync(ByteMessageType.Metadata, cancellationToken);
     }
 
     public async Task<FileMetadata> ReceiveMetadataAsync(
@@ -192,8 +205,8 @@ public readonly struct SenderParameterCommunicationManager
             Type = ByteMessageType.Metadata
         }, cancellationToken);
 
-        var resultMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
-        if (resultMessage.Type == ByteMessageType.EndOfTransfer)
+        ByteMessageType resultType = await _byteTransferManager.ReceiveEmptyMessageAsync(cancellationToken);
+        if (resultType == ByteMessageType.EndOfTransfer)
         {
             throw new InvalidPasswordException("The password was incorrect.");
         }

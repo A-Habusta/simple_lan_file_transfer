@@ -178,14 +178,16 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
    private async Task SendFullMessageAsync(FullMessage message, CancellationToken cancellationToken = default)
    {
       await SendHeaderAsync(message.Header, cancellationToken);
+      if (message.Header.DataSize == 0) return;
+
       await SendDataAsync(message.Data, cancellationToken);
    }
 
    private async Task<FullMessage> ReceiveFullMessageAsync(CancellationToken cancellationToken = default)
    {
       Header header = await ReceiveHeaderAsync(cancellationToken);
-      var data = await ReceiveDataAsync(header.DataSize, cancellationToken);
 
+      var data = header.DataSize > 0 ? await ReceiveDataAsync(header.DataSize, cancellationToken) : Array.Empty<byte>();
       cancellationToken.ThrowIfCancellationRequested();
 
       return new FullMessage
