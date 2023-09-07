@@ -86,25 +86,32 @@ public sealed class StorageFolderWrapper : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(StorageFolderWrapper));
 
+
         var results = new List<FileExistsResults>(fileNames.Count);
 
         var items = _folder.GetItemsAsync();
 
-        await foreach (IStorageItem item in items)
+        await foreach (IStorageItem storageItem in items)
         {
-            var fileName = item.Name;
-            var index = fileNames.IndexOf(fileName);
-
-            if (index == -1) continue;
-
-            results[index] = new FileExistsResults
+            var index = fileNames.IndexOf(storageItem.Name);
+            if (index == -1)
             {
-                FileName = fileName,
+                storageItem.Dispose();
+                continue;
+            }
+
+            results.Add(new FileExistsResults
+            {
+                FileName = storageItem.Name,
                 Exists = true,
-                Item = saveItemsIfFound ? item : null
-            };
+                Item = saveItemsIfFound ? storageItem : null
+            });
+            if (!saveItemsIfFound) storageItem.Dispose();
+
+            fileNames.RemoveAt(index);
         }
 
+        results.AddRange(fileNames.Select(fileName => new FileExistsResults { FileName = fileName, Exists = false, Item = null }));
         return results;
     }
 
