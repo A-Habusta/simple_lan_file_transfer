@@ -86,7 +86,8 @@ public class MainViewModel : ViewModelBase
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
-                                      or InvalidPasswordException or RemoteTransferCancelledException)
+                                      or InvalidPasswordException or RemoteTransferCancelledException
+                                      or UnauthorizedAccessException)
         {
             savedFile?.Dispose();
             await ShowPopup(ex.Message);
@@ -122,7 +123,8 @@ public class MainViewModel : ViewModelBase
             return;
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
-                                      or InvalidPasswordException or RemoteTransferCancelledException)
+                                      or InvalidPasswordException or RemoteTransferCancelledException
+                                      or UnauthorizedAccessException)
         {
             socket.Dispose();
             await ShowPopup(ex.Message);
