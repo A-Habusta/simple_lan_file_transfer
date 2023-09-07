@@ -145,7 +145,10 @@ public partial class TransferViewModel : ViewModelBase
         _defaultFormatString =
             $"{{0}} {_byteSuffix} / {dividedFileSize:F2} {_byteSuffix}";
 
+        FileSizeWithSuffix = dividedFileSize;
+
         _progressFormatString = _defaultFormatString;
+        Task.Run(async() => await StartTransferAsync());
     }
 
     private void OnProgressChanged(object? sender, EventArgs e)
@@ -300,6 +303,8 @@ public partial class TransferViewModel
 
             var fileAccessManager = new FileBlockAccessManager(fileStream, fileSize, metadataWriter);
             fileAccessManager.SeekToBlock(lastWrittenBlock);
+
+            await parameterCommunicationManager.SendLastWrittenBlockAsync(lastWrittenBlock, cancellationToken);
 
             return new TransferViewModel(
                 fileAccessManager,
