@@ -20,18 +20,18 @@ public readonly struct TransmitterTransferManager
             var block = _blockReader.ReadNextBlock();
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (block.LongLength == 0)
+            if (block.Length == 0)
             {
-                await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
+                await _byteSenderAsync.SendAsync(MessageType.EndOfTransfer, cancellationToken: cancellationToken);
                 return;
             }
 
 
-            await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Data = block, Type = ByteMessageType.Data }, cancellationToken);
+            await _byteSenderAsync.SendAsync(MessageType.Data, block, cancellationToken);
 
-            if (block.LongLength == Utility.BlockSize) continue;
+            if (block.Length == Utility.BlockSize) continue;
 
-            await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
+            await _byteSenderAsync.SendAsync(MessageType.EndOfTransfer, cancellationToken: cancellationToken);
             return;
         }
     }
@@ -57,12 +57,12 @@ public readonly struct ReceiverTransferManager
 
             switch (message.Type)
             {
-                case ByteMessageType.Data:
-                    _blockWriter.WriteNextBlock(message.Data);
+                case MessageType.Data:
+                    _blockWriter.WriteNextBlock(message.Data.Span);
                     break;
-                case ByteMessageType.EndOfTransfer:
+                case MessageType.EndOfTransfer:
                     return;
-                case ByteMessageType.Metadata:
+                case MessageType.Metadata:
                     goto default;
                 default:
                     throw new IOException("Received unexpected message type.");
@@ -80,32 +80,40 @@ public readonly struct ByteTransferManagerInterfaceWrapper
         _byteTransferManagerAsync = byteTransferManagerAsync;
     }
 
-    public async Task SendAsync(ByteMessage<byte[]> message, CancellationToken cancellationToken = default) =>
-        await _byteTransferManagerAsync.SendAsync(message, cancellationToken);
+    public async Task SendAsync(MessageType type, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(type, data, cancellationToken);
 
-    public async Task<ByteMessage<byte[]>> ReceiveBytesAsync(CancellationToken cancellationToken = default) =>
+    public async Task<ReceiveResult<ReadOnlyMemory<byte>>> ReceiveBytesAsync(CancellationToken cancellationToken = default) =>
         await _byteTransferManagerAsync.ReceiveAsync(cancellationToken);
 
-    public async Task SendAsync(ByteMessage<string> message, CancellationToken cancellationToken = default) =>
-        await _byteTransferManagerAsync.SendAsync(message, Encoding.UTF8.GetBytes, cancellationToken);
+    public async Task SendAsync(MessageType type, string data, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(
+            type,
+            data,
+            x => new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(x)),
+            cancellationToken);
 
-    public async Task<ByteMessage<string>> ReceiveStringAsync(CancellationToken cancellationToken = default) =>
-        await _byteTransferManagerAsync.ReceiveAsync(Encoding.UTF8.GetString, cancellationToken);
+    public async Task<ReceiveResult<string>> ReceiveStringAsync(CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.ReceiveAsync(
+            x => Encoding.UTF8.GetString(x.Span),
+            cancellationToken);
 
-    public async Task SendAsync(ByteMessage<long> message, CancellationToken cancellationToken = default) =>
-        await _byteTransferManagerAsync.SendAsync(message, BitConverter.GetBytes, cancellationToken);
+    public async Task SendAsync(MessageType type, int data, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(
+            type,
+            data,
+            x => new ReadOnlyMemory<byte>(BitConverter.GetBytes(x)),
+            cancellationToken);
 
-    public async Task<ByteMessage<long>> ReceiveLongAsync(CancellationToken cancellationToken = default) =>
-        await _byteTransferManagerAsync.ReceiveAsync(bytes => BitConverter.ToInt64(bytes), cancellationToken);
+    public async Task<ReceiveResult<int>> ReceiveLongAsync(CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.ReceiveAsync (
+            bytes => BitConverter.ToInt32(bytes.Span),
+            cancellationToken );
 
-    public async Task SendEmptyMessageAsync(ByteMessageType type, CancellationToken cancellationToken = default) =>
-        await _byteTransferManagerAsync.SendAsync(new ByteMessage<byte[]>
-        {
-            Type = type,
-            Data = Array.Empty<byte>()
-        }, cancellationToken);
+    public async Task SendEmptyMessageAsync(MessageType type, CancellationToken cancellationToken = default) =>
+        await _byteTransferManagerAsync.SendAsync(type, cancellationToken: cancellationToken);
 
-    public async Task<ByteMessageType> ReceiveEmptyMessageAsync(CancellationToken cancellationToken = default)
+    public async Task<MessageType> ReceiveEmptyMessageAsync(CancellationToken cancellationToken = default)
     {
         var message = await _byteTransferManagerAsync.ReceiveAsync(cancellationToken);
         return message.Type;
@@ -115,7 +123,7 @@ public readonly struct ByteTransferManagerInterfaceWrapper
 
 public readonly struct FileMetadata
 {
-    public void Deconstruct(out string filename, out byte[] fileHash, out long fileSize)
+    public void Deconstruct(out string filename, out ReadOnlyMemory<byte> fileHash, out int fileSize)
     {
         filename = Name;
         fileHash = Hash;
@@ -123,8 +131,8 @@ public readonly struct FileMetadata
     }
 
     public string Name { get; init; }
-    public byte[] Hash { get; init; }
-    public long Size { get; init; }
+    public ReadOnlyMemory<byte> Hash { get; init; }
+    public int Size { get; init; }
 }
 
 public readonly struct ReceiverParameterCommunicationManager
@@ -140,17 +148,17 @@ public readonly struct ReceiverParameterCommunicationManager
         CancellationToken cancellationToken = default)
     {
         var passwordMessage = await _byteTransferManager.ReceiveStringAsync(cancellationToken);
-        if (passwordMessage.Type != ByteMessageType.Metadata)
+        if (passwordMessage.Type != MessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
         if (actualPassword != string.Empty && actualPassword != passwordMessage.Data)
         {
-            await _byteTransferManager.SendEmptyMessageAsync(ByteMessageType.EndOfTransfer, cancellationToken);
+            await _byteTransferManager.SendEmptyMessageAsync(MessageType.EndOfTransfer, cancellationToken);
             throw new InvalidPasswordException("Received password was incorrect.");
         }
 
         // Blank message to indicate password was correct/no password is required
-        await _byteTransferManager.SendEmptyMessageAsync(ByteMessageType.Metadata, cancellationToken);
+        await _byteTransferManager.SendEmptyMessageAsync(MessageType.Metadata, cancellationToken);
     }
 
     public async Task<FileMetadata> ReceiveMetadataAsync(
@@ -160,22 +168,22 @@ public readonly struct ReceiverParameterCommunicationManager
 
         switch (fileNameMessage)
         {
-            case { Type: ByteMessageType.Metadata }:
+            case { Type: MessageType.Metadata }:
                 break;
-            case { Type: ByteMessageType.EndOfTransfer }:
+            case { Type: MessageType.EndOfTransfer }:
                 throw new RemoteTransferCancelledException("Transfer was cancelled by the sender.");
-            case { Type: ByteMessageType.Data }:
+            case { Type: MessageType.Data }:
                 goto default;
             default:
                 throw new IOException("Received unexpected message type.");
         }
 
         var fileHashMessage = await _byteTransferManager.ReceiveBytesAsync(cancellationToken);
-        if (fileHashMessage.Type != ByteMessageType.Metadata)
+        if (fileHashMessage.Type != MessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
         var fileSizeMessage = await _byteTransferManager.ReceiveLongAsync(cancellationToken);
-        if (fileSizeMessage.Type != ByteMessageType.Metadata)
+        if (fileSizeMessage.Type != MessageType.Metadata)
             throw new IOException("Received unexpected message type.");
 
         return new FileMetadata{
@@ -185,14 +193,8 @@ public readonly struct ReceiverParameterCommunicationManager
         };
     }
 
-    public async Task SendLastWrittenBlockAsync(long block, CancellationToken cancellationToken = default)
-    {
-        await _byteTransferManager.SendAsync(new ByteMessage<long>
-        {
-            Data = block,
-            Type = ByteMessageType.Metadata
-        }, cancellationToken);
-    }
+    public async Task SendLastWrittenBlockAsync(int block, CancellationToken cancellationToken = default) =>
+        await _byteTransferManager.SendAsync(MessageType.Metadata, block, cancellationToken);
 }
 
 public readonly struct SenderParameterCommunicationManager
@@ -206,14 +208,10 @@ public readonly struct SenderParameterCommunicationManager
 
     public async Task SendPassword(string password, CancellationToken cancellationToken = default)
     {
-        await _byteTransferManager.SendAsync(new ByteMessage<string>
-        {
-            Data = password,
-            Type = ByteMessageType.Metadata
-        }, cancellationToken);
+        await _byteTransferManager.SendAsync(MessageType.Metadata, password, cancellationToken);
 
-        ByteMessageType resultType = await _byteTransferManager.ReceiveEmptyMessageAsync(cancellationToken);
-        if (resultType == ByteMessageType.EndOfTransfer)
+        MessageType resultType = await _byteTransferManager.ReceiveEmptyMessageAsync(cancellationToken);
+        if (resultType == MessageType.EndOfTransfer)
         {
             throw new InvalidPasswordException("The password was incorrect.");
         }
@@ -222,36 +220,23 @@ public readonly struct SenderParameterCommunicationManager
     public async Task SendMetadataAsync(FileMetadata metadata, CancellationToken cancellationToken = default)
     {
         var (filename, fileHash, fileSize) = metadata;
-        await _byteTransferManager.SendAsync(new ByteMessage<string>
-        {
-            Data = filename,
-            Type = ByteMessageType.Metadata
-        }, cancellationToken);
 
-        await _byteTransferManager.SendAsync(new ByteMessage<byte[]>
-        {
-            Data = fileHash,
-            Type = ByteMessageType.Metadata
-        }, cancellationToken);
-
-        await _byteTransferManager.SendAsync(new ByteMessage<long>
-        {
-            Data = fileSize,
-            Type = ByteMessageType.Metadata
-        }, cancellationToken);
+        await _byteTransferManager.SendAsync(MessageType.Metadata, filename, cancellationToken);
+        await _byteTransferManager.SendAsync(MessageType.Metadata, fileHash, cancellationToken);
+        await _byteTransferManager.SendAsync(MessageType.Metadata, fileSize, cancellationToken);
     }
 
-    public async Task<long> ReceiveLastWrittenBlock(CancellationToken cancellationToken = default)
+    public async Task<int> ReceiveLastWrittenBlock(CancellationToken cancellationToken = default)
     {
         var message = await _byteTransferManager.ReceiveLongAsync(cancellationToken);
 
         switch (message)
         {
-            case { Type: ByteMessageType.Metadata }:
+            case { Type: MessageType.Metadata }:
                 return message.Data;
-            case { Type: ByteMessageType.EndOfTransfer }:
+            case { Type: MessageType.EndOfTransfer }:
                 throw new RemoteTransferCancelledException("Transfer was cancelled by the receiver.");
-            case { Type: ByteMessageType.Data }:
+            case { Type: MessageType.Data }:
                 goto default;
             default:
                 throw new IOException("Received unexpected message type.");

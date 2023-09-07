@@ -232,7 +232,7 @@ public partial class TransferViewModel
             var fileSize = (await file.GetBasicPropertiesAsync()).Size
                            ?? throw new IOException("File size is inaccessible");
 
-            var fileSizeSigned = (long)fileSize;
+            var fileSizeSigned = (int)fileSize;
 
             FileBlockAccessManager fileAccessManager = new (fileStream, fileSizeSigned);
 
@@ -244,7 +244,7 @@ public partial class TransferViewModel
                 async () => await hashAlgorithm.ComputeHashAsync(fileStream, cancellationToken)
                 , cancellationToken);
 
-            long lastWrittenBlock;
+            int lastWrittenBlock;
             try
             {
                 var metadata = new FileMetadata
@@ -285,12 +285,15 @@ public partial class TransferViewModel
 
             await parameterCommunicationManager.ReceivePassword(password, cancellationToken);
 
-            var (receivedFileName, hash, fileSize) = await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
+            var (receivedFileName, hash, fileSize) =
+                await parameterCommunicationManager.ReceiveMetadataAsync(cancellationToken);
+
             await AskForTransferConfirmationAsync(receivedFileName, socket.RemoteEndPoint!.ToString()!);
 
-            var metadataFileName = BitConverter.ToString(hash);
+            var metadataFileName = Convert.ToHexString(hash.Span);
 
-            FileCarrier result = await GetCorrectMetadataAndDataFileAsync(rootFolder,
+            FileCarrier result = await GetCorrectMetadataAndDataFileAsync(
+                rootFolder,
                 metadataFolderName,
                 receivedFileName,
                 metadataFileName);
@@ -340,7 +343,7 @@ public partial class TransferViewModel
 
             var actualFileName = receivedFileName;
 
-            long lastWrittenBlock = 0;
+            var lastWrittenBlock = 0;
 
             if (metadataFileExists)
             {
@@ -350,7 +353,10 @@ public partial class TransferViewModel
             }
 
             actualFileName = await CheckForAndHandleFileConflicts(rootFolder, actualFileName);
-            return new FileCarrier(metadataFile, await rootFolder.GetOrCreateFileAsync(actualFileName), lastWrittenBlock);
+            return new FileCarrier(
+                metadataFile,
+                await rootFolder.GetOrCreateFileAsync(actualFileName),
+                lastWrittenBlock);
         }
 
         private static async Task<string> CheckForAndHandleFileConflicts(StorageFolderWrapper folder, string originalFileName)
@@ -426,7 +432,7 @@ public partial class TransferViewModel
             return await ShowPopup(message, title, ButtonEnum.YesNoAbort, Icon.Info);
         }
 
-        private record struct FileCarrier(IStorageFile MetadataFile, IStorageFile TransferFile, long ReadBlocksCount);
+        private record struct FileCarrier(IStorageFile MetadataFile, IStorageFile TransferFile, int ReadBlocksCount);
     }
 }
 #endregion
