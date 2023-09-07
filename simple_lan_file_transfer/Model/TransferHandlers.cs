@@ -95,7 +95,8 @@ public readonly struct ByteTransferManagerInterfaceWrapper
     public Task SendEmptyMessageAsync(ByteMessageType type, CancellationToken cancellationToken = default) =>
         _byteTransferManagerAsync.SendAsync(new ByteMessage<byte[]>
         {
-            Type = type
+            Type = type,
+            Data = Array.Empty<byte>()
         }, cancellationToken);
 
     public async Task<ByteMessageType> ReceiveEmptyMessageAsync(CancellationToken cancellationToken = default)
