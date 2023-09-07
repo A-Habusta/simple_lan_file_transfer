@@ -4,7 +4,6 @@
              xmlns:vm="clr-namespace:simple_lan_file_transfer.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:generic="clr-namespace:System.Collections.Generic;assembly=System.Runtime"
              mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="1000"
              x:Class="simple_lan_file_transfer.Views.MainView"
              x:DataType="vm:MainViewModel">
@@ -15,22 +14,6 @@
         <vm:MainViewModel />
     </Design.DataContext>
     <TabControl HorizontalContentAlignment="Center" HorizontalAlignment="Center">
-        <TabItem Header="Transfers">
-            <TabControl HorizontalAlignment="Center" HorizontalContentAlignment="Center"
-                ItemsSource="{Binding TabConnections}">
-                <TabControl.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding TabName}"/>
-                    </DataTemplate>
-                </TabControl.ItemTemplate>
-                <TabControl.ContentTemplate>
-                    <DataTemplate DataType="vm:ConnectionTabViewModel">
-                        <v:SingleConnectionTabView DataContext="{Binding }"/>
-                    </DataTemplate>
-                </TabControl.ContentTemplate>
-            </TabControl>
-        </TabItem>
-
         <TabItem Header="Actions">
             <StackPanel Margin="5" >
                 <Grid ColumnDefinitions="20,150,150,20" RowDefinitions="Auto, Auto" HorizontalAlignment="Center">
@@ -87,6 +70,22 @@
                 </Button>
             </StackPanel>
         </TabItem>
+        <TabItem Header="Transfers">
+            <TabControl HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                ItemsSource="{Binding TabConnections}">
+                <TabControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding TabName}"/>
+                    </DataTemplate>
+                </TabControl.ItemTemplate>
+                <TabControl.ContentTemplate>
+                    <DataTemplate DataType="vm:ConnectionTabViewModel">
+                        <v:SingleConnectionTabView DataContext="{Binding }"/>
+                    </DataTemplate>
+                </TabControl.ContentTemplate>
+            </TabControl>
+        </TabItem>
+
 
         <TabItem Header="Discovery">
             <StackPanel>
