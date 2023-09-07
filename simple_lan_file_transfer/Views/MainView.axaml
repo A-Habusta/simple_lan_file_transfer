@@ -16,21 +16,16 @@
     </Design.DataContext>
     <TabControl HorizontalContentAlignment="Center" HorizontalAlignment="Center">
         <TabItem Header="Transfers">
-            <TabControl ItemsSource="{Binding TabConnections}">
+            <TabControl HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                ItemsSource="{Binding TabConnections}">
                 <TabControl.ItemTemplate>
                     <DataTemplate>
-                        <DataTemplate.DataType>
-                            <x:Type TypeName="generic:KeyValuePair" x:TypeArguments="x:String, vm:ConnectionTabViewModel"/>
-                        </DataTemplate.DataType>
-                        <TextBlock Text="{Binding Value.TabName}"/>
+                        <TextBlock Text="{Binding TabName}"/>
                     </DataTemplate>
                 </TabControl.ItemTemplate>
                 <TabControl.ContentTemplate>
-                    <DataTemplate>
-                        <DataTemplate.DataType>
-                            <x:Type TypeName="generic:KeyValuePair" x:TypeArguments="x:String, vm:ConnectionTabViewModel"/>
-                        </DataTemplate.DataType>
-                            <v:SingleConnectionTabView DataContext="{Binding Value}"/>
+                    <DataTemplate DataType="vm:ConnectionTabViewModel">
+                        <v:SingleConnectionTabView DataContext="{Binding }"/>
                     </DataTemplate>
                 </TabControl.ContentTemplate>
             </TabControl>
