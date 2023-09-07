@@ -46,6 +46,9 @@ public class StorageProviderWrapper
     {
         if (_bookmark is null) await PickNewBookmarkedFolderAsync("Pick a folder to save files to");
 
+        // If we didn't save a new bookmark anyway then we can't access the folder
+        if (_bookmark is null) throw new IOException("No folder specified");
+
         IStorageFolder? folder = await _storageProvider.OpenFolderBookmarkAsync(_bookmark!);
         return folder ?? throw new IOException("Can't access bookmarked folder");
     }
