@@ -107,9 +107,9 @@ public partial class TransferViewModel : ViewModelBase
         catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
                                        or InvalidPasswordException or RemoteTransferCancelledException)
         {
-            await ShowPopup(ex.Message);
             IsFailed = true;
             ProgressFormatString = FailedText;
+            await ShowPopup(ex.Message);
         }
 
         if (!IsFailed && !IsPaused)
@@ -317,6 +317,7 @@ public partial class TransferViewModel
             else
             {
                 metadataWriter = new MetadataWriter(metadataStream);
+                metadataWriter.WriteFileName(file.Name);
             }
 
             var fileAccessManager = new FileBlockAccessManager(fileStream, fileSize, metadataWriter);
@@ -339,24 +340,41 @@ public partial class TransferViewModel
             IStorageFile metadataFile = await metadataFolderProvider.GetOrCreateFileAsync(metadataFileName);
 
             StorageItemProperties result = await metadataFile.GetBasicPropertiesAsync();
-            var metadataFileExists = result.Size > sizeof(long);
+
+            // If the file has just been created, then the file size is 0 so we can use this to tell if it existed or not
+            var metadataFileExisted = result.Size > 0;
 
             var actualFileName = receivedFileName;
 
             var lastWrittenBlock = 0;
 
-            if (metadataFileExists)
+            if (metadataFileExisted)
             {
                 using var metadataReader = new MetadataReader(await metadataFile.OpenReadAsync());
                 lastWrittenBlock = metadataReader.ReadFileLastWrittenBlock();
                 actualFileName = metadataReader.ReadFileName();
+
+                FileExistsResult savedFileExists = await rootFolder.FileExistsAsync(actualFileName, saveItemIfFound: true);
+                if (savedFileExists is { Exists: true, Item: IStorageFile file })
+                {
+                    return new FileCarrier
+                    {
+                        MetadataFile = metadataFile,
+                        TransferFile = file,
+                        WrittenBlocksCount = lastWrittenBlock
+                    };
+                }
+
+                savedFileExists.Item?.Dispose();
             }
 
             actualFileName = await CheckForAndHandleFileConflicts(rootFolder, actualFileName);
-            return new FileCarrier(
-                metadataFile,
-                await rootFolder.GetOrCreateFileAsync(actualFileName),
-                lastWrittenBlock);
+            return new FileCarrier
+            {
+                MetadataFile = metadataFile,
+                TransferFile = await rootFolder.GetOrCreateFileAsync(actualFileName),
+                WrittenBlocksCount = lastWrittenBlock
+            };
         }
 
         private static async Task<string> CheckForAndHandleFileConflicts(StorageFolderWrapper folder, string originalFileName)
@@ -432,7 +450,7 @@ public partial class TransferViewModel
             return await ShowPopup(message, title, ButtonEnum.YesNoAbort, Icon.Info);
         }
 
-        private record struct FileCarrier(IStorageFile MetadataFile, IStorageFile TransferFile, int ReadBlocksCount);
+        private record struct FileCarrier(IStorageFile MetadataFile, IStorageFile TransferFile, int WrittenBlocksCount);
     }
 }
 #endregion

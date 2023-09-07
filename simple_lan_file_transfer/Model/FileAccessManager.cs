@@ -16,7 +16,7 @@ public interface IBlockSequentialWriter
 
 public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSequentialWriter, INotifyPropertyChanged, IDisposable
 {
-    private byte[] _buffer = new byte[Utility.BufferSize];
+    private readonly byte[] _blockBuffer = new byte[Utility.BlockSize];
 
     private bool _disposed;
     private readonly Stream _fileStream;
@@ -57,6 +57,7 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
         if (!_fileStream.CanSeek) return false;
 
         _fileStream.Seek(block * Utility.BlockSize, SeekOrigin.Begin);
+        LastProcessedBlock = block;
 
         return _fileStream.Position == _fileStream.Length;
     }
@@ -65,8 +66,8 @@ public sealed class FileBlockAccessManager : IBlockSequentialReader, IBlockSeque
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileBlockAccessManager));
 
-        var read = _fileStream.Read(_buffer);
-        var block = new ReadOnlyMemory<byte>(_buffer, 0, read);
+        var read = _fileStream.Read(_blockBuffer);
+        var block = new ReadOnlyMemory<byte>(_blockBuffer, 0, read);
 
         IncrementBlockCounter();
 

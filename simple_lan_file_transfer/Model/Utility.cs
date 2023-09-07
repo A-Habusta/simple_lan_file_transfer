@@ -7,8 +7,8 @@ internal static class Utility
     public const int BlockSizeKb = 64;
     public const int BlockSize = BlockSizeKb * BytesInKiloByte;
 
-    public const int BufferSizeKb = 128;
-    public const int BufferSize = BufferSizeKb * BytesInKiloByte;
+    public const int SocketBufferSizeKb = 128;
+    public const int SocketBufferSize = SocketBufferSizeKb * BytesInKiloByte;
 
     public const ushort DefaultPort = 52123;
     public const ushort DefaultBroadcastPort = 52913;
