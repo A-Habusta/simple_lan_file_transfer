@@ -4,7 +4,7 @@ internal static class Utility
 {
     public const int  BytesInKiloByte = 1024;
 
-    public const int BlockSizeKb = 8;
+    public const int BlockSizeKb = 1024;
     public const int BlockSize = BlockSizeKb * BytesInKiloByte;
 
     public const int BufferSizeKb = 8;
