@@ -20,6 +20,8 @@ public sealed class MasterConnectionManager
     public async Task<Socket> StartNewIncomingTransferAsync (CancellationToken cancellationToken = default)
     {
         Socket socket = await _requestListener.AcceptSocketAsync(cancellationToken);
+        SetSocketBufferSizes(socket);
+
         if (cancellationToken.IsCancellationRequested)
         {
             socket.Close();
@@ -32,9 +34,8 @@ public sealed class MasterConnectionManager
     public static async Task<Socket> StartNewOutgoingTransferAsync(IPAddress ipAddress, int port,
         CancellationToken cancellationToken = default)
     {
-        IPEndPoint endPoint = new(IPAddress.Any, 0);
         Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        socket.Bind(endPoint);
+        SetSocketBufferSizes(socket);
 
         await socket.ConnectAsync(ipAddress, port, cancellationToken);
 
@@ -45,6 +46,12 @@ public sealed class MasterConnectionManager
         }
 
         return socket;
+    }
+
+    private static void SetSocketBufferSizes(Socket socket)
+    {
+        socket.SendBufferSize = Utility.BlockSize;
+        socket.ReceiveBufferSize = Utility.BlockSize;
     }
 }
 
