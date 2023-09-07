@@ -112,7 +112,10 @@ public partial class TransferViewModel : ViewModelBase
             ProgressFormatString = FailedText;
         }
 
-        await OnTransferFinishAsync();
+        if (!IsFailed && !IsPaused)
+        {
+            await OnTransferFinishAsync();
+        }
     }
 
     private async Task OnTransferFinishAsync()
