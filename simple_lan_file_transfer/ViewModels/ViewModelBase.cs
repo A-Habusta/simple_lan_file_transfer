@@ -14,8 +14,7 @@ public class ViewModelBase : ReactiveObject
         string title = "Error",
         ButtonEnum buttonEnum = ButtonEnum.Ok,
         Icon icon = Icon.Error,
-        WindowStartupLocation windowStartupLocation = WindowStartupLocation.CenterScreen
-        )
+        WindowStartupLocation windowStartupLocation = WindowStartupLocation.CenterScreen)
     {
         return await Dispatcher.UIThread.InvokeAsync(async () =>
         {
