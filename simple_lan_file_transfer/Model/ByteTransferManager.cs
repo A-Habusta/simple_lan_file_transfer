@@ -98,13 +98,13 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
 
    public async Task SendAsync<T>(
       ByteMessage<T> byteMessage,
-      Func<T, byte[]> dataToBytes,
+      Func<T, byte[]?> dataToBytes,
       CancellationToken cancellationToken = default)
    {
       if (_disposed) throw new ObjectDisposedException(nameof(NetworkTransferManagerAsync));
       cancellationToken.ThrowIfCancellationRequested();
 
-      var buffer = dataToBytes(byteMessage.Data);
+      var buffer = dataToBytes(byteMessage.Data) ?? Array.Empty<byte>();
       var header = new Header
       {
          Type = byteMessage.Type,
