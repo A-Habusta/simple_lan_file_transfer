@@ -281,9 +281,24 @@ public partial class TransferViewModel
             Stream fileStream = await file.OpenWriteAsync();
 
             Stream metadataStream = await metadataFile.OpenWriteAsync();
-            var metadataHandler = new MetadataWriter(metadataStream);
 
-            var fileAccessManager = new FileBlockAccessManager(fileStream, fileSize, metadataHandler);
+            MetadataWriter? metadataWriter;
+            if (!metadataStream.CanSeek)
+            {
+                // If we can't seek, that means we can't seek to the last written block, so we have to start from the
+                // beginning. We also can't save our progress
+
+                lastWrittenBlock = 0;
+                metadataWriter = null;
+                metadataStream.Dispose();
+                metadataFile.Dispose();
+            }
+            else
+            {
+                metadataWriter = new MetadataWriter(metadataStream);
+            }
+
+            var fileAccessManager = new FileBlockAccessManager(fileStream, fileSize, metadataWriter);
             fileAccessManager.SeekToBlock(lastWrittenBlock);
 
             return new TransferViewModel(
@@ -338,8 +353,6 @@ public partial class TransferViewModel
                 default:
                     throw new IndexOutOfRangeException("Invalid ButtonResult value");
             }
-
-
         }
 
         private static async Task<string> GetUniqueFileNameAsync(StorageFolderWrapper folder, string fileName)
