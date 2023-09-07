@@ -107,9 +107,9 @@ public partial class TransferViewModel : ViewModelBase
         catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
                                        or InvalidPasswordException or RemoteTransferCancelledException)
         {
-            await ShowPopup(ex.Message);
             IsFailed = true;
             ProgressFormatString = FailedText;
+            await ShowPopup(ex.Message);
         }
 
         if (!IsFailed && !IsPaused)
