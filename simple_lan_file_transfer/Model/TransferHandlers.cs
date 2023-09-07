@@ -20,6 +20,12 @@ public readonly struct TransmitterTransferManager
             var block = _blockReader.ReadNextBlock();
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (block.LongLength == 0)
+            {
+                await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Type = ByteMessageType.EndOfTransfer }, cancellationToken);
+                return;
+            }
+
 
             await _byteSenderAsync.SendAsync(new ByteMessage<byte[]> { Data = block, Type = ByteMessageType.Data }, cancellationToken);
 
