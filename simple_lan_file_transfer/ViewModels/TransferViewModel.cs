@@ -19,7 +19,7 @@ public sealed partial class TransferViewModel : ViewModelBase, IDisposable
     private const string ButtonTextPaused = "Cancel";
     private const string ButtonTextFinished = "Close";
 
-    private static readonly IBrush ProgressBarColorFinshed = Brushes.LimeGreen;
+    private static readonly IBrush ProgressBarColorFinished = Brushes.LimeGreen;
     private static readonly IBrush ProgressBarColorFailed = Brushes.Red;
     private static readonly IBrush ProgressBarColorRunning = Brushes.CornflowerBlue;
     private static readonly IBrush ProgressBarColorPaused = Brushes.Gray;
@@ -226,7 +226,7 @@ public sealed partial class TransferViewModel : ViewModelBase, IDisposable
         ShowResumeButton = false;
 
         ProgressFormatString = FinishedText;
-        ProgressBarColor = ProgressBarColorFinshed;
+        ProgressBarColor = ProgressBarColorFinished;
         CancelButtonText = ButtonTextFinished;
     }
 }
