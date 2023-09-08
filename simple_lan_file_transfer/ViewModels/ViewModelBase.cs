@@ -1,12 +1,12 @@
-﻿using ReactiveUI;
-using MsBox.Avalonia;
+﻿using MsBox.Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using MsBox.Avalonia.Enums;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace simple_lan_file_transfer.ViewModels;
 
-public class ViewModelBase : ReactiveObject
+public class ViewModelBase : ObservableObject
 {
     // We need to use Dispatcher.UIThread.InvokeAsync to show the popup
     protected static async Task<ButtonResult> ShowPopup(

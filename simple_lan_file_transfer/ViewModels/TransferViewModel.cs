@@ -1,20 +1,28 @@
-using ReactiveUI;
 using Avalonia.Media;
 using MsBox.Avalonia.Enums;
 using Avalonia.Platform.Storage;
 using System.Security.Cryptography;
+using CommunityToolkit.Mvvm.ComponentModel;
 using simple_lan_file_transfer.Models;
 
 namespace simple_lan_file_transfer.ViewModels;
 
-public partial class TransferViewModel : ViewModelBase
+public sealed partial class TransferViewModel : ViewModelBase, IDisposable
 {
-    private const string FailedText = "Transfer failed";
+    public delegate void SelfRemover(TransferViewModel transferViewModel);
 
+    private bool _disposed;
+
+    private const string FailedText = "Transfer failed";
+    private const string FinishedText = "Transfer finished";
+
+    private const string ButtonTextPaused = "Cancel";
+    private const string ButtonTextFinished = "Close";
+
+    private static readonly IBrush ProgressBarColorFinshed = Brushes.LimeGreen;
+    private static readonly IBrush ProgressBarColorFailed = Brushes.Red;
     private static readonly IBrush ProgressBarColorRunning = Brushes.CornflowerBlue;
     private static readonly IBrush ProgressBarColorPaused = Brushes.Gray;
-
-    public delegate void SelfRemover(TransferViewModel transferViewModel);
 
     private readonly FileBlockAccessManager _fileAccessManager;
     private readonly NetworkTransferManagerAsync _networkTransferManager;
@@ -28,53 +36,48 @@ public partial class TransferViewModel : ViewModelBase
     public TransferDirection Direction { get; }
 
     #region Bound Properties
-    public string Name => _transferFile.Name;
+    public string Name { get; }
 
     public double FileSizeWithSuffix { get; }
 
-    private bool _isPaused;
-    public bool IsPaused
-    {
-        get => _isPaused;
-        set => this.RaiseAndSetIfChanged(ref _isPaused, value);
-    }
+    [ObservableProperty] private bool _showPauseButton;
 
-    private bool _isFailed;
-    public bool IsFailed
-    {
-        get => _isFailed;
-        set => this.RaiseAndSetIfChanged(ref _isFailed, value);
-    }
+    [ObservableProperty] private bool _showResumeButton;
 
-    private double _progress;
-    public double Progress
-    {
-        get => _progress;
-        set => this.RaiseAndSetIfChanged(ref _progress, value);
-    }
+    [ObservableProperty] private bool _showCancelButton;
 
-    private IBrush _progressBarColor = ProgressBarColorRunning;
-    public IBrush ProgressBarColor
-    {
-        get => _progressBarColor;
-        set => this.RaiseAndSetIfChanged(ref _progressBarColor, value);
-    }
+    [ObservableProperty] private string _cancelButtonText = ButtonTextPaused;
+
+    [ObservableProperty] private double _progress;
+
+    [ObservableProperty] private IBrush _progressBarColor = ProgressBarColorRunning;
 
     private readonly Utility.ByteSuffix _byteSuffix;
     private readonly string _defaultFormatString;
-    private string _progressFormatString;
-    public string ProgressFormatString
-    {
-        get => _progressFormatString;
-        set => this.RaiseAndSetIfChanged(ref _progressFormatString, value);
-    }
+
+    [ObservableProperty] private string _progressFormatString;
 
     #endregion
 
     public void RegisterSelfRemover(SelfRemover selfRemoverDelegate) => _selfRemover = selfRemoverDelegate;
 
-    public void TerminateTransfer()
+    public void RunTransfer()
     {
+        _pauseTokenSource = new CancellationTokenSource();
+
+        Task.Run(async () => await StartTransferAsync(_pauseTokenSource.Token), _pauseTokenSource.Token)
+            .ContinueWith(
+                async x => await OnTransferTaskFinishAsync(x),
+                continuationOptions: TaskContinuationOptions.NotOnCanceled)
+            .ContinueWith(_ => _pauseTokenSource.Dispose());
+    }
+
+    public void RemoveTransfer(bool shouldDispose)
+    {
+        if (shouldDispose)
+        {
+            Dispose();
+        }
         RemoveTransferFromTab();
     }
 
@@ -84,44 +87,19 @@ public partial class TransferViewModel : ViewModelBase
         SetUserInterfaceElementsToPauseMode();
     }
 
-    public async Task StartTransferAsync()
+    public void Dispose()
     {
-        _pauseTokenSource = new CancellationTokenSource();
-        CancellationToken pauseToken = _pauseTokenSource.Token;
+        if (_disposed) return;
 
-        ResetUserInterfaceElements();
+        _fileAccessManager.Dispose();
+        _networkTransferManager.Dispose();
 
-        try
-        {
-            if (Direction == TransferDirection.Outgoing)
-            {
-                var transmitter = new TransmitterTransferManager(_fileAccessManager, _networkTransferManager);
-                await transmitter.SendBytesAsync(pauseToken: pauseToken);
-            }
-            else
-            {
-                var receiver = new ReceiverTransferManager(_fileAccessManager, _networkTransferManager);
-                await receiver.ReceiveBytesAsync(pauseToken: pauseToken);
-            }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException
-                                       or InvalidPasswordException or RemoteTransferCancelledException)
-        {
-            IsFailed = true;
-            ProgressFormatString = FailedText;
-            await ShowPopup(ex.Message);
-        }
+        _transferFile.Dispose();
+        _metadataFile?.Dispose();
 
-        if (!IsFailed && !IsPaused)
-        {
-            await OnTransferFinishAsync();
-        }
-    }
+        _pauseTokenSource?.Dispose();
 
-    private async Task OnTransferFinishAsync()
-    {
-        await RemoveMetadataFileAsync();
-        RemoveTransferFromTab();
+        _disposed = true;
     }
 
     private async Task RemoveMetadataFileAsync()
@@ -133,13 +111,40 @@ public partial class TransferViewModel : ViewModelBase
     private void RemoveTransferFromTab()
     {
         _selfRemover?.Invoke(this);
-        _fileAccessManager.Dispose();
-        _networkTransferManager.Dispose();
+    }
 
-        _transferFile.Dispose();
-        _metadataFile?.Dispose();
+    private async Task StartTransferAsync(CancellationToken pauseToken = default)
+    {
+        SetUserInterfaceElementsToRunningMode();
 
-        _pauseTokenSource?.Dispose();
+        if (Direction == TransferDirection.Outgoing)
+        {
+            var transmitter = new TransmitterTransferManager(_fileAccessManager, _networkTransferManager);
+            await transmitter.SendBytesAsync(pauseToken: pauseToken);
+        }
+
+        else
+        {
+            var receiver = new ReceiverTransferManager(_fileAccessManager, _networkTransferManager);
+            await receiver.ReceiveBytesAsync(pauseToken: pauseToken);
+        }
+    }
+
+    private async Task OnTransferTaskFinishAsync(Task transferTask)
+    {
+        Exception? exception = transferTask.Exception?.InnerExceptions.First();
+
+        if (exception is not null)
+        {
+            SetUserInterfaceElementsToFailedMode(exception.Message);
+        }
+        else
+        {
+            await RemoveMetadataFileAsync();
+            SetUserInterfaceElementsToFinishedMode();
+        }
+
+        Dispose();
     }
 
 
@@ -152,6 +157,8 @@ public partial class TransferViewModel : ViewModelBase
         _transferFile = transferFile;
         _metadataFile = metadataFile;
 
+        Name = transferFile.Name;
+
         _fileAccessManager.PropertyChanged += OnProgressChanged;
 
         _byteSuffix = Utility.GetHighestPossibleByteSuffixForNumber(_fileAccessManager.FileSize);
@@ -163,7 +170,8 @@ public partial class TransferViewModel : ViewModelBase
         FileSizeWithSuffix = dividedFileSize;
 
         _progressFormatString = _defaultFormatString;
-        Task.Run(async() => await StartTransferAsync());
+
+        RunTransfer();
     }
 
     private void OnProgressChanged(object? sender, EventArgs e)
@@ -180,23 +188,46 @@ public partial class TransferViewModel : ViewModelBase
         return Utility.DivideNumberToFitSuffix(progress, _byteSuffix);
     }
 
-    private void ResetUserInterfaceElements()
+    private void SetUserInterfaceElementsToRunningMode()
     {
-        IsPaused = false;
-        ProgressBarColor = ProgressBarColorRunning;
+        ShowPauseButton = true;
+        ShowCancelButton = false;
+        ShowResumeButton = false;
+
         ProgressFormatString = _defaultFormatString;
+        ProgressBarColor = ProgressBarColorRunning;
     }
 
     private void SetUserInterfaceElementsToPauseMode()
     {
-        IsPaused = true;
+        ShowPauseButton = false;
+        ShowCancelButton = true;
+        ShowResumeButton = true;
+
+        ProgressFormatString = $"{_defaultFormatString} (Paused)";
         ProgressBarColor = ProgressBarColorPaused;
-        AddPauseToProgressText();
     }
 
-    private void AddPauseToProgressText()
+    private void SetUserInterfaceElementsToFailedMode(string failMessage)
     {
-        ProgressFormatString = $"{_defaultFormatString} (Paused)";
+        ShowPauseButton = false;
+        ShowCancelButton = true;
+        ShowResumeButton = false;
+
+        ProgressFormatString = $"{FailedText} ({failMessage})";
+        ProgressBarColor = ProgressBarColorFailed;
+        CancelButtonText = ButtonTextFinished;
+    }
+
+    private void SetUserInterfaceElementsToFinishedMode()
+    {
+        ShowPauseButton = false;
+        ShowCancelButton = true;
+        ShowResumeButton = false;
+
+        ProgressFormatString = FinishedText;
+        ProgressBarColor = ProgressBarColorFinshed;
+        CancelButtonText = ButtonTextFinished;
     }
 }
 
