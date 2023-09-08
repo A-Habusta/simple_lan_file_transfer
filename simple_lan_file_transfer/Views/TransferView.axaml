@@ -17,37 +17,26 @@
             Foreground="{Binding ProgressBarColor}"
             Margin="3"/>
         <DockPanel Margin="3" HorizontalAlignment="Stretch">
-            <Button Command="{Binding StartTransferAsync}" DockPanel.Dock="Left">
-                <Button.IsVisible>
-                    <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <MultiBinding.Bindings>
-                            <Binding Path="!IsFailed"/>
-                            <Binding Path="IsPaused"/>
-                        </MultiBinding.Bindings>
-                    </MultiBinding>
-                </Button.IsVisible>
+            <Button Command="{Binding RunTransfer}" DockPanel.Dock="Left"
+                    IsVisible="{Binding ShowResumeButton}">
                 Resume
             </Button>
-            <Button Command="{Binding TerminateTransfer}" DockPanel.Dock="Left">
-                <Button.IsVisible>
-                    <MultiBinding Converter="{x:Static BoolConverters.Or}">
-                        <MultiBinding.Bindings>
-                            <Binding Path="IsFailed"/>
-                            <Binding Path="IsPaused"/>
-                        </MultiBinding.Bindings>
-                    </MultiBinding>
-                </Button.IsVisible>
-                Terminate
-            </Button>
-            <Button Command="{Binding PauseTransfer}" DockPanel.Dock="Right">
-                <Button.IsVisible>
+            <Button Command="{Binding RemoveTransfer}" DockPanel.Dock="Left"
+                    Content="{Binding CancelButtonText}"
+                    IsVisible="{Binding ShowCancelButton}">
+                <Button.CommandParameter>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
                         <MultiBinding.Bindings>
-                            <Binding Path="!IsFailed"/>
-                            <Binding Path="!IsPaused"/>
+                            <Binding Path="ShowCancelButton"/>
+                            <Binding Path="ShowResumeButton"/>
+                            <Binding Path="!ShowPauseButton"/>
                         </MultiBinding.Bindings>
                     </MultiBinding>
-                </Button.IsVisible>
+                </Button.CommandParameter>
+            </Button>
+            <Button DockPanel.Dock="Right"
+                    Command="{Binding PauseTransfer}"
+                    IsVisible="{Binding ShowPauseButton}">
                 Pause
             </Button>
         </DockPanel>
