@@ -6,9 +6,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace simple_lan_file_transfer.ViewModels;
 
+/// <summary>
+/// ViewModel for the main window, which also takes care of most UI logic.
+/// </summary>
 public class MainViewModel : ViewModelBase
 {
     private readonly object _tabConnectionsLock = new();
+
+    /// <summary>
+    /// Collection of all connection tabs.
+    /// </summary>
     public ObservableCollection<ConnectionTabViewModel> TabConnections { get; } = new();
 
     public ObservableCollection<string> AvailableIpAddresses { get; } = new();
@@ -21,6 +28,9 @@ public class MainViewModel : ViewModelBase
 
     private string _password = string.Empty;
 
+    /// <summary>
+    /// Creates the main view model and starts listening for incoming connections.
+    /// </summary>
     public MainViewModel()
     {
         _broadcastHandler.AvailableIpAddresses.CollectionChanged += OnAvailableIpAddressesChanged;
@@ -32,6 +42,10 @@ public class MainViewModel : ViewModelBase
         _connectionManagerWrapper.RunLoop();
     }
 
+    /// <summary>
+    /// Change the state of the broadcast transmission.
+    /// </summary>
+    /// <param name="newState">True if the transmission is to be turned on, false otherwise</param>
     public void ChangeBroadcastTransmitState(bool newState)
     {
         if (newState)
@@ -44,6 +58,10 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Change the state of the broadcast receiver.
+    /// </summary>
+    /// <param name="newState">True if the broadcast receiver is to be turned on, false otherwise</param>
     public void ChangeBroadcastListenState(bool newState)
     {
         if (newState)
@@ -66,6 +84,11 @@ public class MainViewModel : ViewModelBase
         await GetStorageProviderService().PickNewBookmarkedFolderAsync("Pick new receive folder");
     }
 
+    /// <summary>
+    /// Starts new file send to the specified IP address.
+    /// </summary>
+    /// <param name="ipAddressString">Target IP address</param>
+    /// <param name="password">Receiver password</param>
     public async Task StartFileSendAsync(string ipAddressString, string password)
     {
         if (!IPAddress.TryParse(ipAddressString, out IPAddress? ipAddress))
@@ -94,6 +117,11 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Gets the application storage provider through a service.
+    /// </summary>
+    /// <returns>Storage provider instance for the application</returns>
+    /// <exception cref="InvalidOperationException"></exception>
     private StorageProviderWrapper GetStorageProviderService()
     {
         if (_storageProviderWrapper is not null) return _storageProviderWrapper;
@@ -106,6 +134,12 @@ public class MainViewModel : ViewModelBase
         return _storageProviderWrapper;
     }
 
+    /// <summary>
+    /// Starts new incoming file transfer on the specified socket. Creates a transfer view model and saves it to the
+    /// correct tab. The transfer is immediately started.
+    /// </summary>
+    /// <param name="socket">Socket with connection</param>
+    /// <param name="cancellationToken"/>
     private async Task CreateNewIncomingTransferAsync(Socket socket, CancellationToken cancellationToken = default)
     {
         IStorageFolder receiveRootFolder = await GetStorageProviderService().GetBookmarkedFolderAsync();
@@ -136,6 +170,15 @@ public class MainViewModel : ViewModelBase
         SaveTransferViewModelInCorrectTab(viewModel, ipAddress.ToString());
     }
 
+    /// <summary>
+    /// Creates a new outgoing transfer on the specified socket. Creates a transfer view model and saves it to the
+    /// correct tab. The transfer is immediately started.
+    /// </summary>
+    /// <param name="file">File to be sent</param>
+    /// <param name="ipAddress">Target IP address</param>
+    /// <param name="port">Target port</param>
+    /// <param name="password">Receiver password</param>
+    /// <param name="cancellationToken"/>
     private async Task CreateNewOutgoingTransferAsync(IStorageFile file, IPAddress ipAddress, int port, string password,
         CancellationToken cancellationToken = default)
     {
@@ -184,6 +227,10 @@ public class MainViewModel : ViewModelBase
         return result;
     }
 
+    /// <summary>
+    /// Event handler for listening to changes in the available IP addresses collection. This collection is updated by
+    /// the broadcast receiver.
+    /// </summary>
     private void OnAvailableIpAddressesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         switch (e.Action)
@@ -224,6 +271,10 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+
+    /// <summary>
+    /// Handles the event of a new incoming connection.
+    /// </summary>
     private async void OnNewIncomingConnection(object? sender, Socket socket)
     {
         await CreateNewIncomingTransferAsync(socket);

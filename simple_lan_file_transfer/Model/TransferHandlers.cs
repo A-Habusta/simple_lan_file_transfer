@@ -2,6 +2,10 @@ using System.Text;
 
 namespace simple_lan_file_transfer.Models;
 
+/// <summary>
+/// Wraps the <see cref="IBlockSequentialReader"/> and <see cref="IByteSenderAsync"/> interfaces and provides a simple
+/// method to send data from the <see cref="IBlockSequentialReader"/> to the <see cref="IByteSenderAsync"/>.
+/// </summary>
 public readonly struct TransmitterTransferManager
 {
     private readonly IBlockSequentialReader _blockReader;
@@ -13,6 +17,13 @@ public readonly struct TransmitterTransferManager
         _byteSenderAsync = byteSenderAsync;
     }
 
+    /// <summary>
+    /// Sends the data from the <see cref="IBlockSequentialReader"/> to the <see cref="IByteSenderAsync"/>, until there
+    /// is data in the <see cref="IBlockSequentialReader"/>. Sends an empty message with the type EndOfTransfer when
+    /// the transfer is finished.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the task wherever</param>
+    /// <param name="pauseToken">Cancels the transfer only when a loop iteration is finished</param>
     public async Task SendBytesAsync(CancellationToken cancellationToken = default, CancellationToken pauseToken = default)
     {
         for (;;)
@@ -39,6 +50,11 @@ public readonly struct TransmitterTransferManager
     }
 }
 
+/// <summary>
+/// Wraps the <see cref="IBlockSequentialWriter"/> and <see cref="IByteReceiverAsync"/> interfaces and provides a
+/// simple way to receive data from the <see cref="IByteReceiverAsync"/> and write it to the
+/// <see cref="IBlockSequentialWriter"/>.
+/// </summary>
 public readonly struct ReceiverTransferManager
 {
     private readonly IBlockSequentialWriter _blockWriter;
@@ -50,6 +66,13 @@ public readonly struct ReceiverTransferManager
         _byteReceiverAsync = byteReceiverAsync;
     }
 
+    /// <summary>
+    /// Receives data from the <see cref="IByteReceiverAsync"/> and writes it to the <see cref="IBlockSequentialWriter"/>.
+    /// Receives an empty message with the type EndOfTransfer when the transfer is finished.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the task wherever</param>
+    /// <param name="pauseToken">Cancels the transfer only when a loop iteration is finished</param>
+    /// <exception cref="IOException">Thrown when an unknown message type is received</exception>
     public async Task ReceiveBytesAsync(CancellationToken cancellationToken = default, CancellationToken pauseToken = default)
     {
         for (;;)
@@ -75,6 +98,10 @@ public readonly struct ReceiverTransferManager
     }
 }
 
+/// <summary>
+/// Wraps the <see cref="IByteTransferManagerAsync"/> interface and provides pre-made method for sending and receiving
+/// various data types.
+/// </summary>
 public readonly struct ByteTransferManagerInterfaceWrapper
 {
     private readonly IByteTransferManagerAsync _byteTransferManagerAsync;
@@ -125,6 +152,9 @@ public readonly struct ByteTransferManagerInterfaceWrapper
 
 }
 
+/// <summary>
+/// Structure used for storing the metadata of a file for easier handling.
+/// </summary>
 public readonly struct FileMetadata
 {
     public void Deconstruct(out string filename, out ReadOnlyMemory<byte> fileHash, out int fileSize)
@@ -139,6 +169,9 @@ public readonly struct FileMetadata
     public int Size { get; init; }
 }
 
+/// <summary>
+/// Manages the communication between the sender and the receiver of the file transfer on the sender's side.
+/// </summary>
 public readonly struct ReceiverParameterCommunicationManager
 {
     private readonly ByteTransferManagerInterfaceWrapper _byteTransferManager;
@@ -148,6 +181,16 @@ public readonly struct ReceiverParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
+    /// <summary>
+    /// Receives a password from the sender and compares it to the expected password. If the passwords don't match,
+    /// throws an <see cref="InvalidPasswordException"/> and sends an empty message with the type EndOfTransfer.
+    /// If the local password is empty, sends an empty message with the type Metadata to indicate that no password is
+    /// expected. This message is also sent when the passwords match.
+    /// </summary>
+    /// <param name="actualPassword">Expected password</param>
+    /// <param name="cancellationToken"/>
+    /// <exception cref="IOException">Throw when an unexpected message type is received</exception>
+    /// <exception cref="InvalidPasswordException">Throw when the received password is invalid</exception>
     public async Task ReceivePassword(string actualPassword,
         CancellationToken cancellationToken = default)
     {
@@ -165,6 +208,13 @@ public readonly struct ReceiverParameterCommunicationManager
         await _byteTransferManager.SendEmptyMessageAsync(MessageType.Metadata, cancellationToken);
     }
 
+    /// <summary>
+    /// Communicates with the sender to receive the metadata of the file being transferred.
+    /// </summary>
+    /// <param name="cancellationToken"/>
+    /// <returns>Received file metadata</returns>
+    /// <exception cref="RemoteTransferCancelledException">Thrown when an EndOfTransfer message is received</exception>
+    /// <exception cref="IOException">Thrown when an unexpected message type is received</exception>
     public async Task<FileMetadata> ReceiveMetadataAsync(
         CancellationToken cancellationToken = default)
     {
@@ -197,10 +247,19 @@ public readonly struct ReceiverParameterCommunicationManager
         };
     }
 
+    /// <summary>
+    /// Send the last written block to the sender to indicate where to start the transfer from.
+    /// </summary>
+    /// <param name="block">Last block that was written for the file to be received</param>
+    /// <param name="cancellationToken"/>
     public async Task SendLastWrittenBlockAsync(int block, CancellationToken cancellationToken = default) =>
         await _byteTransferManager.SendAsync(MessageType.Metadata, block, cancellationToken);
 }
 
+/// <summary>
+/// Responsible for managing the communication between the sender and the receiver of the file transfer on the sender's
+/// side.
+/// </summary>
 public readonly struct SenderParameterCommunicationManager
 {
     private readonly ByteTransferManagerInterfaceWrapper _byteTransferManager;
@@ -210,6 +269,14 @@ public readonly struct SenderParameterCommunicationManager
         _byteTransferManager = new ByteTransferManagerInterfaceWrapper(byteTransferManagerAsync);
     }
 
+    /// <summary>
+    /// Sends the specified password to the receiver. If the receiver responds with an EndOfTransfer message, it means
+    /// that the password was invalid and we throw an <see cref="InvalidPasswordException"/>. If any other message
+    /// type is received that means the password was the correct one (or that no password is expected) and we continue.
+    /// </summary>
+    /// <param name="password">Password to be sent</param>
+    /// <param name="cancellationToken"/>
+    /// <exception cref="InvalidPasswordException">Thrown when the sent password is not correct</exception>
     public async Task SendPassword(string password, CancellationToken cancellationToken = default)
     {
         await _byteTransferManager.SendAsync(MessageType.Metadata, password, cancellationToken);
@@ -221,6 +288,11 @@ public readonly struct SenderParameterCommunicationManager
         }
     }
 
+    /// <summary>
+    /// Send metadata of the file that will be transferred to the receiver.
+    /// </summary>
+    /// <param name="metadata">Struct containing the metadata to send</param>
+    /// <param name="cancellationToken"/>
     public async Task SendMetadataAsync(FileMetadata metadata, CancellationToken cancellationToken = default)
     {
         var (filename, fileHash, fileSize) = metadata;
@@ -230,6 +302,13 @@ public readonly struct SenderParameterCommunicationManager
         await _byteTransferManager.SendAsync(MessageType.Metadata, fileSize, cancellationToken);
     }
 
+    /// <summary>
+    /// Receives the last written block from the receiver to indicate where to start the transfer from.
+    /// </summary>
+    /// <param name="cancellationToken"/>
+    /// <returns>Received file metadata</returns>
+    /// <exception cref="RemoteTransferCancelledException">Thrown when an EndOfTransfer message is received</exception>
+    /// <exception cref="IOException">Thrown when an unexpected message type is received</exception>
     public async Task<int> ReceiveLastWrittenBlock(CancellationToken cancellationToken = default)
     {
         var message = await _byteTransferManager.ReceiveLongAsync(cancellationToken);

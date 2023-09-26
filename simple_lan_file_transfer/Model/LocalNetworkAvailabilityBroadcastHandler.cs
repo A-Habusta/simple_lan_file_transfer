@@ -2,6 +2,9 @@ using System.Runtime.InteropServices;
 
 namespace simple_lan_file_transfer.Models;
 
+/// <summary>
+/// This class is responsible for broadcasting and listening for local network availability.
+/// </summary>
 public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
 {
     private class LocalNetworkAvailabilityBroadcastSender : NetworkLoopBase
@@ -12,6 +15,11 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
             PopulateBroadcastedAddressesPerInterface();
         }
 
+        /// <summary>
+        /// This method is called in a loop in the base class. It sends a broadcast message to all available interfaces
+        /// containing the local IP address of the corresponding interface.
+        /// </summary>
+        /// <param name="cancellationToken"/>
         protected override async Task LoopAsync(CancellationToken cancellationToken)
         {
             var tasks = new List<Task>();
@@ -33,6 +41,11 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
             }
         }
 
+
+        /// <summary>
+        /// Populates the instance's list of broadcasted addresses. Each address is associated with a <see cref="UdpClient"/>
+        /// used for broadcasting to the interface corresponding to said address.
+        /// </summary>
         private void PopulateBroadcastedAddressesPerInterface()
         {
             ClearBroadcastedAddressesPerInterface();
@@ -88,11 +101,19 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
         }
     }
 
+    /// <summary>
+    /// Class used for listening to local network availability broadcasts. It listens for broadcast messages and adds
+    /// any received IP addresses to its <see cref="AvailableIpAddresses"/> collection.
+    /// </summary>
     private class LocalNetworkAvailabilityBroadcastReceiver : NetworkLoopBase
     {
         private readonly UdpClient _broadcastListener;
         public ObservableCollection<IPAddress> AvailableIpAddresses { get; } = new();
 
+        /// <summary>
+        /// Creates a new instance of <see cref="LocalNetworkAvailabilityBroadcastReceiver"/>. The instance will listen
+        /// for incoming datagrams on the default broadcast port specified in the <see cref="Utility"/> class.
+        /// </summary>
         public LocalNetworkAvailabilityBroadcastReceiver()
         {
             Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -109,6 +130,9 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
             _broadcastListener = new UdpClient { Client = socket };
         }
 
+        /// <summary>
+        /// Continuously listens for incoming datagrams
+        /// </summary>
         protected override async Task LoopAsync(CancellationToken cancellationToken)
         {
             AvailableIpAddresses.Clear();
@@ -140,6 +164,11 @@ public sealed class LocalNetworkAvailabilityBroadcastHandler : IDisposable
             base.Dispose(disposing);
         }
 
+        /// <summary>
+        /// Checks if the specified IP address is one from this machine
+        /// </summary>
+        /// <param name="ipAddress">IP address to check</param>
+        /// <returns>Boolean indicating whether the specified address is ours</returns>
         private bool IsIpAddressOurs(IPAddress ipAddress)
         {
             var addresses = Utility.FindAllLocalAddressInfo();

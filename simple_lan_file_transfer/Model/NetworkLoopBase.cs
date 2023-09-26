@@ -1,5 +1,8 @@
 namespace simple_lan_file_transfer.Models;
 
+/// <summary>
+/// Abstract class used for running an endless network loop in a task.
+/// </summary>
 public abstract class NetworkLoopBase : IDisposable
 {
     protected bool Disposed;
@@ -14,6 +17,10 @@ public abstract class NetworkLoopBase : IDisposable
 
     protected abstract Task LoopAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Starts running the loop specified in the <see cref="LoopAsync"/> method.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown when the object is disposed</exception>
     public void RunLoop()
     {
         if (Disposed) throw new ObjectDisposedException(nameof(NetworkLoopBase));

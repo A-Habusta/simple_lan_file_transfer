@@ -1,9 +1,18 @@
 using System.Runtime.InteropServices;
 
 namespace simple_lan_file_transfer.Models;
+
+/// <summary>
+/// Class used for creating new incoming and outgoing connections.
+/// </summary>
 public sealed class MasterConnectionManager
 {
     private readonly TcpListener _requestListener;
+    /// <summary>
+    /// Creates a new instance of <see cref="MasterConnectionManager"/> and starts listening for incoming connections on
+    /// the specified port.
+    /// </summary>
+    /// <param name="port">Port of the local listen endpoint</param>
     public MasterConnectionManager(int port)
     {
         _requestListener = new TcpListener(IPAddress.Any, port);
@@ -17,6 +26,14 @@ public sealed class MasterConnectionManager
         _requestListener.Start();
     }
 
+    /// <summary>
+    /// Wait for a remote sender connection and create a new socket for it.
+    /// </summary>
+    /// <param name="cancellationToken"/>
+    /// <returns>New socket connected to a remote sender</returns>
+    /// <exception cref="OperationCanceledException">
+    /// Throws if the <paramref name="cancellationToken"/> is cancelled.
+    /// </exception>
     public async Task<Socket> StartNewIncomingTransferAsync (CancellationToken cancellationToken = default)
     {
         Socket socket = await _requestListener.AcceptSocketAsync(cancellationToken);
@@ -31,6 +48,16 @@ public sealed class MasterConnectionManager
         return socket;
     }
 
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="ipAddress">Remote host address</param>
+    /// <param name="port">Remote host port</param>
+    /// <param name="cancellationToken"/>
+    /// <returns>Socket connected to the remote endpoint</returns>
+    /// <exception cref="OperationCanceledException">
+    /// Thrown when the <paramref name="cancellationToken"/> is cancelled
+    /// </exception>
     public static async Task<Socket> StartNewOutgoingTransferAsync(IPAddress ipAddress, int port,
         CancellationToken cancellationToken = default)
     {
@@ -55,6 +82,10 @@ public sealed class MasterConnectionManager
     }
 }
 
+/// <summary>
+/// Wrapper around <see cref="MasterConnectionManager"/> that listens for incoming connections in the background
+/// continuously and raises an event when a new connection is received.
+/// </summary>
 public sealed class MasterConnectionManagerListenerWrapper : NetworkLoopBase
 {
     public event EventHandler<Socket>? NewIncomingConnection;

@@ -1,5 +1,8 @@
 namespace simple_lan_file_transfer.Models;
 
+/// <summary>
+/// Specifies the type of message that will be sent or received.
+/// </summary>
 public enum MessageType
 {
    Metadata,
@@ -7,36 +10,75 @@ public enum MessageType
    EndOfTransfer
 }
 
+/// <summary>
+/// This struct is used to return the result of a receive operation.
+/// </summary>
+/// <typeparam name="T">Held data type</typeparam>
 public readonly struct ReceiveResult<T>
 {
    public T Data { get; init; }
    public MessageType Type { get; init; }
 }
 
+/// <summary>
+/// Specifies a generic asynchronous interface for sending bytes.
+/// </summary>
 public interface IByteSenderAsync
 {
+   /// <summary>
+   /// Sends specified data over the network. The data will be converted to bytes using the supplied delegate.
+   /// </summary>
+   /// <param name="type">Type of message that will be sent</param>
+   /// <param name="data">Data to be sent</param>
+   /// <param name="dataToBytes">Delegate for converting data to bytes</param>
+   /// <param name="cancellationToken"/>
+   /// <typeparam name="T">Type of data to be converted and sent as bytes</typeparam>
    Task SendAsync<T>(
       MessageType type,
       T data,
       Func<T, ReadOnlyMemory<byte>?> dataToBytes,
       CancellationToken cancellationToken = default);
 
+   /// <summary>
+   /// Sends raw bytes over the network.
+   /// </summary>
+   /// <param name="type">Type of message to be sent</param>
+   /// <param name="data">Bytes to be send</param>
+   /// <param name="cancellationToken"/>
    Task SendAsync(MessageType type, ReadOnlyMemory<byte> data = default, CancellationToken cancellationToken = default) =>
       SendAsync(type, data , x => x, cancellationToken);
 }
 
+/// <summary>
+/// Specifies a generic asynchronous interface for receiving bytes.
+/// </summary>
 public interface IByteReceiverAsync
 {
+   /// <summary>
+   /// Receives data from a remote connection and converts it to the specified type using the supplied delegate.
+   /// </summary>
+   /// <param name="bytesToData">Delegate for received data conversion</param>
+   /// <param name="cancellationToken"/>
+   /// <typeparam name="T">Type of target data</typeparam>
+   /// <returns>Received bytes converted to specified type</returns>
    Task<ReceiveResult<T>> ReceiveAsync<T>(
       Func<ReadOnlyMemory<byte>, T> bytesToData,
       CancellationToken cancellationToken = default);
 
+   /// <summary>
+   /// Receives raw bytes from a remote connection.
+   /// </summary>
+   /// <param name="cancellationToken"/>
    Task<ReceiveResult<ReadOnlyMemory<byte>>> ReceiveAsync(CancellationToken cancellationToken = default) =>
       ReceiveAsync(data => data, cancellationToken);
 }
 
 public interface IByteTransferManagerAsync : IByteSenderAsync, IByteReceiverAsync {}
 
+/// <summary>
+/// This class is used to send and receive bytes over a network connection.
+/// It implements the <see cref="IByteTransferManagerAsync"/> interface.
+/// </summary>
 public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferManagerAsync
 {
    private readonly struct Header
@@ -81,11 +123,19 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
    private readonly Socket _socket;
    private readonly byte[] _blockBuffer = new byte[Utility.BlockSize];
 
+   /// <summary>
+   /// Creates a new instance of <see cref="NetworkTransferManagerAsync"/> with the specified socket, the socket
+   /// must be ready to send and receive data before being passed to this constructor.
+   /// </summary>
+   /// <param name="socket">Open socket that will be used for data transfer</param>
    public NetworkTransferManagerAsync(Socket socket)
    {
       _socket = socket;
    }
-
+   /// <inheritdoc/>
+   /// <exception cref="ObjectDisposedException">
+   /// Thrown when this instance has been disposed
+   /// </exception>
    public async Task SendAsync<T>(
       MessageType type,
       T data,
@@ -111,6 +161,10 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
       await SendFullMessageAsync(fullMessage, cancellationToken);
    }
 
+   /// <inheritdoc/>
+   /// <exception cref="ObjectDisposedException">
+   /// Thrown when this instance has been disposed
+   /// </exception>
    public async Task<ReceiveResult<T>> ReceiveAsync<T>(
       Func<ReadOnlyMemory<byte>, T> bytesToData,
       CancellationToken cancellationToken = default)
@@ -128,6 +182,9 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
       };
    }
 
+   /// <summary>
+   /// Disposes of this instance and the underlying socket.
+   /// </summary>
    public void Dispose()
    {
       if (_disposed) return;
@@ -196,7 +253,7 @@ public sealed class NetworkTransferManagerAsync : IDisposable, IByteTransferMana
    private async Task<ReadOnlyMemory<byte>> ReceiveRawDataAsync(int size, CancellationToken cancellationToken = default)
    {
       if (size > _blockBuffer.Length)
-         
+
       {
          throw new ArgumentOutOfRangeException(
             nameof(size),

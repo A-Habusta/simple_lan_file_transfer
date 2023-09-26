@@ -7,6 +7,9 @@ using simple_lan_file_transfer.Models;
 
 namespace simple_lan_file_transfer.ViewModels;
 
+/// <summary>
+/// ViewModel that contains information about a single transfer.
+/// </summary>
 public sealed partial class TransferViewModel : ViewModelBase, IDisposable
 {
     public delegate void SelfRemover(TransferViewModel transferViewModel);
@@ -33,6 +36,10 @@ public sealed partial class TransferViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _pauseTokenSource;
 
     private SelfRemover? _selfRemover;
+
+    /// <summary>
+    /// Whether the transfer is incoming or outgoing
+    /// </summary>
     public TransferDirection Direction { get; }
 
     #region Bound Properties
@@ -59,8 +66,15 @@ public sealed partial class TransferViewModel : ViewModelBase, IDisposable
 
     #endregion
 
+    /// <summary>
+    /// Save a delegate used for removing the transfer from the parent collection.
+    /// </summary>
+    /// <param name="selfRemoverDelegate">The delegate to be saved</param>
     public void RegisterSelfRemover(SelfRemover selfRemoverDelegate) => _selfRemover = selfRemoverDelegate;
 
+    /// <summary>
+    /// Start the transfer.
+    /// </summary>
     public void RunTransfer()
     {
         _pauseTokenSource = new CancellationTokenSource();
@@ -72,6 +86,10 @@ public sealed partial class TransferViewModel : ViewModelBase, IDisposable
             .ContinueWith(_ => _pauseTokenSource.Dispose());
     }
 
+    /// <summary>
+    /// Dispose of the transfer and remove it from the parent collection.
+    /// </summary>
+    /// <param name="shouldDispose">Bool indicating whether the Dispose method should be called</param>
     public void RemoveTransfer(bool shouldDispose)
     {
         if (shouldDispose)
@@ -81,6 +99,9 @@ public sealed partial class TransferViewModel : ViewModelBase, IDisposable
         RemoveTransferFromTab();
     }
 
+    /// <summary>
+    /// Pause the transfer and set the UI elements to paused mode.
+    /// </summary>
     public void PauseTransfer()
     {
         _pauseTokenSource?.Cancel();
@@ -147,7 +168,14 @@ public sealed partial class TransferViewModel : ViewModelBase, IDisposable
         Dispose();
     }
 
-
+    /// <summary>
+    /// Sets up various UI elements. This constructor is private because it should only be called from the factory.
+    /// </summary>
+    /// <param name="fileAccessManager">File access manager to use for the transfer</param>
+    /// <param name="networkTransferManager">Network transfer manager used for the transfer</param>
+    /// <param name="direction">Direction of the transfer</param>
+    /// <param name="transferFile">File used in the transfer</param>
+    /// <param name="metadataFile">Metadata file used in the transfer</param>
     private TransferViewModel(FileBlockAccessManager fileAccessManager, NetworkTransferManagerAsync networkTransferManager,
         TransferDirection direction, IStorageFile transferFile, IStorageFile? metadataFile = null)
     {
@@ -240,8 +268,22 @@ public partial class TransferViewModel
         Outgoing
     }
 
+    /// <summary>
+    /// Factory that takes care of creating new <see cref="TransferViewModel"/>s. This includes creating the underlying
+    /// transfer and communicating the transfer parameters.
+    /// </summary>
     public static class TransferViewModelAsyncFactory
     {
+        /// <summary>
+        /// Creates new outgoing transfer and a corresponding transfer view model. This includes creating the underlying
+        /// transfer and communicating the transfer parameters.
+        /// </summary>
+        /// <param name="socket">Socket which is connected to a remote receiver</param>
+        /// <param name="file">The file to send</param>
+        /// <param name="password">The password of the receiver</param>
+        /// <param name="cancellationToken"/>
+        /// <returns>Transfer view model containing the resultant transfer</returns>
+        /// <exception cref="IOException">Thrown when the file doesn't support reading file size</exception>
         public static async Task<TransferViewModel> CreateOutgoingTransferViewModelAsync(Socket socket,
             IStorageFile file, string password, CancellationToken cancellationToken = default)
         {
@@ -304,6 +346,16 @@ public partial class TransferViewModel
                 file);
         }
 
+        /// <summary>
+        /// Creates new incoming transfer and a corresponding transfer view model. This includes creating the underlying
+        /// transfer and communicating the transfer parameters.
+        /// </summary>
+        /// <param name="socket">Socket connected to the remote sender</param>
+        /// <param name="rootFolder">Folder where the file will be saved</param>
+        /// <param name="metadataFolderName">Name of the folder where metadata is stored</param>
+        /// <param name="password">Expected password, empty if none</param>
+        /// <param name="cancellationToken"/>
+        /// <returns>Transfer view model with the resultant incoming transfer</returns>
         public static async Task<TransferViewModel> CreateIncomingTransferViewModelAsync(
             Socket socket,
             StorageFolderWrapper rootFolder,
@@ -364,6 +416,16 @@ public partial class TransferViewModel
                 metadataFile);
         }
 
+        /// <summary>
+        /// Returns the correct metadata and data file for the transfer. If the file already exists, but the metadata
+        /// doesn't, the user will be prompted if they want to overwrite the file. If not, a new file name will be
+        /// created by adding (n) to the end of the filename.
+        /// </summary>
+        /// <param name="rootFolder">Folder where the file will be saved</param>
+        /// <param name="metadataFolderName">Folder where metadata is saved</param>
+        /// <param name="receivedFileName">File name that was received from the sender</param>
+        /// <param name="metadataFileName">Metadata file name</param>
+        /// <returns></returns>
         private static async Task<FileCarrier> GetCorrectMetadataAndDataFileAsync(
             StorageFolderWrapper rootFolder, string metadataFolderName, string receivedFileName, string metadataFileName)
         {
@@ -408,6 +470,17 @@ public partial class TransferViewModel
             };
         }
 
+        /// <summary>
+        /// Checks if a file exists and if so, asks the user if they want to overwrite it. If not, a new file name will
+        /// be created with a number at the end.
+        /// </summary>
+        /// <param name="folder">Folder where to search in</param>
+        /// <param name="originalFileName">File name to check</param>
+        /// <returns>An available file name</returns>
+        /// <exception cref="LocalTransferCancelledException">
+        /// Thrown if the user decides to cancel the transfer
+        /// </exception>
+        /// <exception cref="IndexOutOfRangeException">Thrown if the ButtonResult value was invalid</exception>
         private static async Task<string> CheckForAndHandleFileConflicts(StorageFolderWrapper folder, string originalFileName)
         {
             FileExistsResult result = await folder.FileExistsAsync(originalFileName);
@@ -430,6 +503,13 @@ public partial class TransferViewModel
             }
         }
 
+        /// <summary>
+        /// Gets a unique file name by adding (n) to the end of the file name. Returns first available file name of this
+        /// type.
+        /// </summary>
+        /// <param name="folder">Folder to search in</param>
+        /// <param name="fileName">File name to check</param>
+        /// <returns></returns>
         private static async Task<string> GetUniqueFileNameAsync(StorageFolderWrapper folder, string fileName)
         {
             const int batchSize = 5;
@@ -460,6 +540,12 @@ public partial class TransferViewModel
             }
         }
 
+        /// <summary>
+        /// Asks user if they want to receive the file. If not, throws <see cref="LocalTransferCancelledException"/>.
+        /// </summary>
+        /// <param name="fileName">File name to include in question</param>
+        /// <param name="ip">Address of remote sender</param>
+        /// <exception cref="LocalTransferCancelledException">Thrown if user cancels the transfer</exception>
         private static async Task AskForTransferConfirmationAsync(string fileName, string ip)
         {
             const string title = "Transfer confirmation";
@@ -473,6 +559,11 @@ public partial class TransferViewModel
             }
         }
 
+        /// <summary>
+        /// Asks the user what they want to do about a file conflict.
+        /// </summary>
+        /// <param name="fileName">Name of the conflicting file</param>
+        /// <returns>Which button the user pressed</returns>
         private static async Task<ButtonResult> ShowFileConflictMessageBoxAsync(string fileName)
         {
             const string title = "File already exists";

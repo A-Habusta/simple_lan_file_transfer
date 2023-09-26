@@ -1,5 +1,8 @@
 namespace simple_lan_file_transfer.Models;
 
+/// <summary>
+/// Class containing various utility methods and constants.
+/// </summary>
 internal static class Utility
 {
     public const int  BytesInKiloByte = 1024;
@@ -29,6 +32,13 @@ internal static class Utility
         EB,
     }
 
+    /// <summary>
+    /// Adds the highest possible suffix to the number, while keeping the number higher than 1.
+    /// </summary>
+    /// <param name="number">Number to add suffix to</param>
+    /// <returns>
+    /// A string containing the number with the highest possible suffix which still keeps the number higher than 1
+    /// </returns>
     public static string AddHighestPossibleByteSuffixToNumber(long number)
     {
 
@@ -36,9 +46,20 @@ internal static class Utility
         return AddByteSuffixToNumber(number, suffix);
     }
 
+    /// <summary>
+    /// Adds the specified suffix to the number, dividing it.
+    /// </summary>
+    /// <param name="number">Number to which the suffix will be added</param>
+    /// <param name="suffix">The suffix to add</param>
+    /// <returns></returns>
     public static string AddByteSuffixToNumber(long number, ByteSuffix suffix)
         => $"{DivideNumberToFitSuffix(number, suffix):F2} {suffix}";
 
+    /// <summary>
+    /// Calculate the highest possible suffix for the number, while keeping the number higher than 1.
+    /// </summary>
+    /// <param name="number"></param>
+    /// <returns></returns>
     public static ByteSuffix GetHighestPossibleByteSuffixForNumber(long number)
     {
         const long divisor = 1024;
@@ -53,6 +74,12 @@ internal static class Utility
         return suffix;
     }
 
+    /// <summary>
+    /// Divides the number to fit specified suffix.
+    /// </summary>
+    /// <param name="number">Number to be divided</param>
+    /// <param name="suffix">Suffix to fit the number to</param>
+    /// <returns></returns>
     public static double DivideNumberToFitSuffix(long number, ByteSuffix suffix)
     {
         const double divisor = 1024;
@@ -66,6 +93,10 @@ internal static class Utility
         return numberFloatingPoint;
     }
 
+    /// <summary>
+    /// Gets list of IP addresses for all operational network interfaces.
+    /// </summary>
+    /// <returns>List of IP addresses for all operational network interfaces</returns>
     public static List<UnicastIPAddressInformation> FindAllLocalAddressInfo()
     {
         var interfaces = NetworkInterface.GetAllNetworkInterfaces();
@@ -78,6 +109,11 @@ internal static class Utility
 
     }
 
+    /// <summary>
+    /// Calculates the local network broadcast address for the specified address info.
+    /// </summary>
+    /// <param name="addressInfo">Address to calculate broadcast address for</param>
+    /// <returns></returns>
     public static IPAddress CalculateNetworkBroadcastAddress(UnicastIPAddressInformation addressInfo)
     {
         var bytes = addressInfo.Address.GetAddressBytes();
