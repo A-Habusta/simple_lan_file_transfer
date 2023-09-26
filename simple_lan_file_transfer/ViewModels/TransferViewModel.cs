@@ -509,7 +509,7 @@ public partial class TransferViewModel
         /// </summary>
         /// <param name="folder">Folder to search in</param>
         /// <param name="fileName">File name to check</param>
-        /// <returns></returns>
+        /// <returns>Available file name</returns>
         private static async Task<string> GetUniqueFileNameAsync(StorageFolderWrapper folder, string fileName)
         {
             const int batchSize = 5;
